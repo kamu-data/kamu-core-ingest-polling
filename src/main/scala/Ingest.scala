@@ -50,14 +50,12 @@ class Ingest(config: AppConfig) {
       .appName(source.id)
       .getOrCreate()
 
-    var reader = spark.read
-      .format(source.format)
+    val df = spark.read
       .schema(Schemas.schemas(source.schemaName))
-    reader = source.readerOptions.foldLeft(reader)(
-      (r, op) => r.option(op.name, op.value)
-    )
+      .format(source.format)
+      .options(source.readerOptions)
+      .load(filePath)
 
-    val df = reader.load(filePath)
     df.write.parquet(outPath.toString)
 
     spark.close()

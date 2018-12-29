@@ -18,5 +18,4 @@ libraryDependencies ++= Seq(
   // Spark
   "org.apache.spark" %% "spark-core" % sparkVersion % "provided",
   "org.apache.spark" %% "spark-sql" % sparkVersion % "provided"
-  //"org.scala-lang.modules" %% "scala-xml" % "1.1.1"
 )
