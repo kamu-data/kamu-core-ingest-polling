@@ -13,7 +13,6 @@ case class Source(
 
 case class AppConfig(
   downloadDir: Path,
-  cacheDir: Path,
   dataDir: Path,
   sources: Vector[Source]
 )

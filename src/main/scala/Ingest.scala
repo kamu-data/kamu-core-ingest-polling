@@ -6,15 +6,17 @@ import org.apache.spark.sql.{SaveMode, SparkSession}
 class Ingest(config: AppConfig) {
   val logger = LogManager.getLogger(getClass.getName)
 
-  val fileCache = new FileCache(
-    config.downloadDir,
-    config.cacheDir)
+  val fileCache = new FileCache(config.downloadDir)
 
   val compression = new Compression()
 
   def pollAndIngest(): Unit = {
     logger.info(s"Starting ingest")
     logger.info(s"Running with config: $config")
+
+    val spark = SparkSession.builder
+      .appName("ingest.polling")
+      .getOrCreate()
 
     for (source <- config.sources) {
       logger.info(s"Processing source: ${source.id}")
@@ -23,11 +25,13 @@ class Ingest(config: AppConfig) {
 
       val outPath = config.dataDir.resolve(source.id)
 
-      if (!downloadResult.wasUpToDate || !Files.exists(outPath))
-        ingest(source, downloadResult.filePath, outPath.toString)
+      if (!downloadResult.wasUpToDate || !Files.exists(outPath)) {
+        ingest(spark.newSession(), source, downloadResult.filePath, outPath.toString)
+      }
     }
 
     logger.info(s"Finished ingest run")
+    spark.close()
   }
 
   def download(source: Source): DownloadResult = {
@@ -44,12 +48,8 @@ class Ingest(config: AppConfig) {
     }
   }
 
-  def ingest(source: Source, filePath: String, outPath: String): Unit = {
+  def ingest(spark: SparkSession, source: Source, filePath: String, outPath: String): Unit = {
     logger.info(s"Reading the data: in=$filePath, out=$outPath")
-
-    val spark = SparkSession.builder
-      .appName(source.id)
-      .getOrCreate()
 
     val df = spark.read
       .schema(Schemas.schemas(source.schemaName))
@@ -60,8 +60,6 @@ class Ingest(config: AppConfig) {
     df.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
-
-    spark.close()
   }
 
 }

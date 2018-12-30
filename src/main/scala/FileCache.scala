@@ -36,10 +36,7 @@ object FileCache {
 }
 
 
-class FileCache(
-  downloadsDir: Path,
-  cacheDir: Path
-) {
+class FileCache(val downloadsDir: Path) {
   private implicit val formats = Serialization.formats(NoTypeHints)
 
   private val logger = LogManager.getLogger(getClass.getName)
@@ -161,7 +158,10 @@ class FileCache(
   }
 
   def getCacheInfoPath(file: CachedFile): Path = {
-    cacheDir.resolve(file.namespace).resolve(file.fileName + ".json")
+    downloadsDir
+      .resolve(file.namespace)
+      .resolve("_metadata")
+      .resolve(file.fileName + ".json")
   }
 
   def getDownloadPath(file: CachedFile): Path = {
