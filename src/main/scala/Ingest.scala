@@ -1,7 +1,7 @@
 import java.nio.file.Files
 
 import org.apache.log4j.LogManager
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{SaveMode, SparkSession}
 
 class Ingest(config: AppConfig) {
   val logger = LogManager.getLogger(getClass.getName)
@@ -14,6 +14,7 @@ class Ingest(config: AppConfig) {
 
   def pollAndIngest(): Unit = {
     logger.info(s"Starting ingest")
+    logger.info(s"Running with config: $config")
 
     for (source <- config.sources) {
       logger.info(s"Processing source: ${source.id}")
@@ -56,7 +57,9 @@ class Ingest(config: AppConfig) {
       .options(source.readerOptions)
       .load(filePath)
 
-    df.write.parquet(outPath.toString)
+    df.write
+      .mode(SaveMode.Append)
+      .parquet(outPath.toString)
 
     spark.close()
   }
