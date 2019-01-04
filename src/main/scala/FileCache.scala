@@ -1,6 +1,6 @@
 import java.io._
 import java.net.URL
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Path}
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -12,21 +12,15 @@ import scalaj.http.Http
 
 
 case class CacheInfo(
+  url: String,
   lastModified: Option[Date],
   eTag: Option[String]
 )
 
-class CachedFile(
-  val namespace: String,
-  val url: URL
-) {
-  val fileName: String = Paths.get(url.getPath).getFileName.toString
-}
 
 case class DownloadResult(
   existed: Boolean,
   wasUpToDate: Boolean,
-  filePath: String,
   cacheInfo: CacheInfo
 )
 
@@ -36,56 +30,53 @@ object FileCache {
 }
 
 
-class FileCache(val downloadsDir: Path) {
+class FileCache() {
   private implicit val formats = Serialization.formats(NoTypeHints)
 
   private val logger = LogManager.getLogger(getClass.getName)
 
   private val lastModifiedHeaderFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
 
-  def maybeDownload(file: CachedFile): DownloadResult = {
-    logger.info(s"Requested file: ${file.url}")
+  def maybeDownload(url: URL, outPath: Path): DownloadResult = {
+    logger.info(s"Requested file: $url")
 
-    val maybeStoredCacheInfo = getStoredCacheInfo(file)
-    val freshCacheInfo = getFreshCacheInfo(file)
+    val dataDir = outPath.getParent
+    val maybeStoredCacheInfo = getStoredCacheInfo(url, dataDir)
+    val freshCacheInfo = getFreshCacheInfo(url)
 
     logger.info(s"Stored cache info: $maybeStoredCacheInfo")
     logger.info(s"Latest cache info: $freshCacheInfo")
 
     if(isUpToDate(maybeStoredCacheInfo, freshCacheInfo)) {
-      logger.info(s"File ${file.fileName} is up to date")
+      logger.info(s"File is up to date")
 
       return DownloadResult(
         existed = true,
         wasUpToDate = true,
-        filePath = getDownloadPath(file).toString,
         cacheInfo = freshCacheInfo)
     }
 
-    download(file)
-    storeCacheInfo(file, freshCacheInfo)
+    download(url, outPath)
+    storeCacheInfo(dataDir, freshCacheInfo)
 
     DownloadResult(
       existed = maybeStoredCacheInfo.isDefined,
       wasUpToDate = false,
-      filePath = getDownloadPath(file).toString,
       cacheInfo = freshCacheInfo)
   }
 
-  def download(file: CachedFile): Unit = {
-    val downloadPath = getDownloadPath(file)
+  def download(url: URL, outPath: Path): Unit = {
+    if (!Files.exists(outPath.getParent))
+      Files.createDirectories(outPath.getParent)
 
-    if (!Files.exists(downloadPath.getParent))
-      Files.createDirectories(downloadPath.getParent)
+    val outFile = new File(outPath.toString)
 
-    val downloadFile = new File(downloadPath.toString)
-
-    logger.info(s"Downloading: url=${file.url}, path=$downloadPath")
-    FileUtils.copyURLToFile(file.url, downloadFile)
+    logger.info(s"Downloading: url=$url, path=$outPath")
+    FileUtils.copyURLToFile(url, outFile)
   }
 
-  def getStoredCacheInfo(file: CachedFile): Option[CacheInfo] = {
-    val cachePath = getCacheInfoPath(file)
+  def getStoredCacheInfo(url: URL, dataDir: Path): Option[CacheInfo] = {
+    val cachePath = getCacheInfoPath(dataDir)
 
     if(!Files.exists(cachePath))
       return None
@@ -93,11 +84,14 @@ class FileCache(val downloadsDir: Path) {
     val reader = new BufferedReader(new FileReader(cachePath.toString))
     val cacheInfo = Serialization.read[CacheInfo](reader)
 
+    if (cacheInfo.url != url.toString)
+      return None
+
     Some(cacheInfo)
   }
 
-  def storeCacheInfo(file: CachedFile, cacheInfo: CacheInfo): Unit = {
-    val cachePath = getCacheInfoPath(file)
+  def storeCacheInfo(dataDir: Path, cacheInfo: CacheInfo): Unit = {
+    val cachePath = getCacheInfoPath(dataDir)
 
     if (!Files.exists(cachePath.getParent))
       Files.createDirectories(cachePath.getParent)
@@ -107,20 +101,20 @@ class FileCache(val downloadsDir: Path) {
     writer.close()
   }
 
-  def getFreshCacheInfo(file: CachedFile): CacheInfo = {
-    file.url.getProtocol match {
+  def getFreshCacheInfo(url: URL): CacheInfo = {
+    url.getProtocol match {
       case "http" | "https" =>
-        getFreshCacheInfoHttp(file)
+        getFreshCacheInfoHttp(url)
       case "file" =>
         // TODO: Security concern - debug only feature
-        getFreshCacheInfoFile(file)
+        getFreshCacheInfoFile(url)
     }
   }
 
-  def getFreshCacheInfoHttp(file: CachedFile): CacheInfo = {
-    logger.info(s"Fetching HEAD of ${file.url}")
+  def getFreshCacheInfoHttp(url: URL): CacheInfo = {
+    logger.info(s"Fetching HEAD of $url")
 
-    val response = Http(file.url.toString)
+    val response = Http(url.toString)
       .method("HEAD")
       .asString
 
@@ -130,14 +124,14 @@ class FileCache(val downloadsDir: Path) {
 
     val eTag = response.header("ETag")
 
-    CacheInfo(lastModified, eTag)
+    CacheInfo(url = url.toString, lastModified = lastModified, eTag = eTag)
   }
 
-  def getFreshCacheInfoFile(file: CachedFile): CacheInfo = {
-    val fsFile = new File(file.url.toURI)
+  def getFreshCacheInfoFile(url: URL): CacheInfo = {
+    val fsFile = new File(url.toURI)
     val millis = fsFile.lastModified()
     val date = new Date(millis)
-    CacheInfo(lastModified = Some(date), eTag = None)
+    CacheInfo(url = url.toString, lastModified = Some(date), eTag = None)
   }
 
   def isUpToDate(maybeStoredCacheInfo: Option[CacheInfo],
@@ -157,14 +151,9 @@ class FileCache(val downloadsDir: Path) {
     false
   }
 
-  def getCacheInfoPath(file: CachedFile): Path = {
-    downloadsDir
-      .resolve(file.namespace)
+  def getCacheInfoPath(dataDir: Path): Path = {
+    dataDir
       .resolve("_metadata")
-      .resolve(file.fileName + ".json")
-  }
-
-  def getDownloadPath(file: CachedFile): Path = {
-    downloadsDir.resolve(file.namespace).resolve(file.fileName)
+      .resolve("cacheInfo.json")
   }
 }

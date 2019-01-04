@@ -1,4 +1,4 @@
-import java.nio.file.Files
+import java.nio.file.{Files, Path}
 
 import org.apache.log4j.LogManager
 import org.apache.spark.sql.{SaveMode, SparkSession}
@@ -6,7 +6,7 @@ import org.apache.spark.sql.{SaveMode, SparkSession}
 class Ingest(config: AppConfig) {
   val logger = LogManager.getLogger(getClass.getName)
 
-  val fileCache = new FileCache(config.downloadDir)
+  val fileCache = new FileCache()
 
   val compression = new Compression()
 
@@ -21,12 +21,25 @@ class Ingest(config: AppConfig) {
     for (source <- config.sources) {
       logger.info(s"Processing source: ${source.id}")
 
-      val downloadResult = download(source)
+      val downloadPath = config.downloadDir
+        .resolve(source.id)
+        .resolve("data.bin")
 
-      val outPath = config.dataDir.resolve(source.id)
+      val compressedPath = config.downloadDir
+        .resolve(source.id)
+        .resolve("data.gz")
 
-      if (!downloadResult.wasUpToDate || !Files.exists(outPath)) {
-        ingest(spark.newSession(), source, downloadResult.filePath, outPath.toString)
+      val ingestedPath = config.dataDir
+        .resolve(source.id)
+
+      val downloadResult = fileCache.maybeDownload(source.url, downloadPath)
+
+      if (!downloadResult.wasUpToDate || !Files.exists(compressedPath)) {
+        compression.process(source, downloadPath, compressedPath)
+      }
+
+      if (!Files.exists(ingestedPath)) {
+        ingest(spark.newSession(), source, compressedPath, ingestedPath)
       }
     }
 
@@ -34,28 +47,14 @@ class Ingest(config: AppConfig) {
     spark.close()
   }
 
-  def download(source: Source): DownloadResult = {
-    val res = fileCache.maybeDownload(new CachedFile(
-      namespace = source.id,
-      url = source.url))
-
-    if (res.wasUpToDate) {
-      res
-    } else {
-      // TODO: avoid transcoding by adding Zip file support to Spark
-      val compressionResult = compression.process(res.filePath)
-      res.copy(filePath = compressionResult.filePath)
-    }
-  }
-
-  def ingest(spark: SparkSession, source: Source, filePath: String, outPath: String): Unit = {
+  def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: Path): Unit = {
     logger.info(s"Reading the data: in=$filePath, out=$outPath")
 
     val df = spark.read
       .schema(Schemas.schemas(source.schemaName))
       .format(source.format)
       .options(source.readerOptions)
-      .load(filePath)
+      .load(filePath.toString)
 
     df.write
       .mode(SaveMode.Append)

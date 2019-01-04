@@ -1,81 +1,65 @@
 import java.io.{FileInputStream, FileOutputStream}
-import java.nio.file.Paths
-import java.util.zip.{GZIPOutputStream, ZipEntry, ZipInputStream}
+import java.nio.file.{Files, Path, Paths}
+import java.util.zip.{GZIPOutputStream, ZipInputStream}
+
 import org.apache.log4j.LogManager
-
-
-case class CompressionInfo(
-  isCompressed: Boolean,
-  needsTranscoding: Boolean,
-  currentCompression: String,
-  targetCompression: String
-)
-
-
-case class CompressionResult(
-  wasCompressed: Boolean,
-  isCompressed: Boolean,
-  wasTranscoded: Boolean,
-  prevCompression: String,
-  currentCompression: String,
-  filePath: String
-)
 
 
 class Compression {
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def analyze(filePath: String): CompressionInfo = {
-    val fileName = Paths.get(filePath).getFileName.toString
-
-    fileName match {
-      case _ if fileName.endsWith(".zip") =>
-        CompressionInfo(
-          isCompressed = true,
-          needsTranscoding = true,
-          currentCompression = "zip",
-          targetCompression = "gz")
-      case _ =>
-        CompressionInfo(
-          isCompressed = false,
-          needsTranscoding = false,
-          currentCompression = "",
-          targetCompression = "")
-    }
-  }
-
-  def process(filePath: String): CompressionResult = {
-    val ci = analyze(filePath)
-
-    ci match {
-      case CompressionInfo(_, false, _, _) =>
-        CompressionResult(
-          wasCompressed = ci.isCompressed,
-          isCompressed = ci.isCompressed,
-          wasTranscoded = false,
-          prevCompression = ci.currentCompression,
-          currentCompression = ci.currentCompression,
-          filePath = filePath)
-      case CompressionInfo(_, _, "zip", "gz") =>
-        logger.info(s"Transcoding file from zip to gz: $filePath")
-        zip_to_gz(filePath)
+  def process(source: Source, inPath: Path, outPath: Path): Unit = {
+    source.compression.map(_.toLowerCase) match {
+      case None =>
+        logger.info("Considering file uncompressed")
+        compressGZip(inPath, outPath)
+        Files.delete(inPath)
+      case Some("gzip") =>
+        logger.info("File is already has desired compression")
+        Files.move(inPath, outPath)
+      case Some("zip") =>
+        logger.info("Transcoding between compression formats")
+        transcodeZipToGZip(inPath, source.subPath, outPath)
+        Files.delete(inPath)
       case _ =>
         throw new NotImplementedError
     }
   }
 
-  private def zip_to_gz(filePath: String): CompressionResult = {
-    val fileInStream = new FileInputStream(filePath)
+  private def compressGZip(inPath: Path, outPath: Path): Unit = {
+    val fileInStream = new FileInputStream(inPath.toString)
+    val fileOutStream = new FileOutputStream(outPath.toString)
+    val gzipOutStream = new GZIPOutputStream(fileOutStream)
+
+    val buffer = new Array[Byte](4096)
+
+    Stream.continually(fileInStream.read(buffer))
+      .takeWhile(_ != -1)
+      .foreach(gzipOutStream.write(buffer, 0, _))
+
+    gzipOutStream.finish()
+    gzipOutStream.close()
+  }
+
+  private def transcodeZipToGZip(
+      inPath: Path, subPath: Option[Path], outPath: Path): Unit = {
+    val fileInStream = new FileInputStream(inPath.toString)
     val zipInStream = new ZipInputStream(fileInStream)
 
-    // TODO: Only supporting ZIP files with one file inside
-    val outPath = filePath.replaceAll("\\.zip$", ".gz")
-    val fileOutStream = new FileOutputStream(outPath)
+    val fileOutStream = new FileOutputStream(outPath.toString)
     val gzipOutStream = new GZIPOutputStream(fileOutStream)
+    var processed = false
 
     Stream.continually(zipInStream.getNextEntry)
       .takeWhile(_ != null)
+      .filter(zipEntry => subPath.isEmpty || subPath.get == Paths.get(zipEntry.getName))
       .foreach { zipEntry =>
+        if (processed)
+          throw new RuntimeException(
+            "Zip file has multiple entries but the subPath was not specified")
+
+        logger.info(s"Extracting zip entry: ${zipEntry.getName}")
+
         val buffer = new Array[Byte](4096)
 
         Stream.continually(zipInStream.read(buffer))
@@ -84,15 +68,11 @@ class Compression {
 
         gzipOutStream.finish()
         gzipOutStream.close()
+        processed = true
     }
 
-    CompressionResult(
-      wasCompressed = true,
-      isCompressed = true,
-      wasTranscoded = true,
-      prevCompression = "zip",
-      currentCompression = "gz",
-      filePath = outPath)
+    if (!processed)
+      throw new RuntimeException("Failed to find an entry in the Zip file")
   }
 
 }
