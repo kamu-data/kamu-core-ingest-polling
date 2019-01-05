@@ -50,8 +50,12 @@ class Ingest(config: AppConfig) {
   def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: Path): Unit = {
     logger.info(s"Reading the data: in=$filePath, out=$outPath")
 
-    val df = spark.read
-      .schema(Schemas.schemas(source.schemaName))
+    val reader = spark.read
+
+    if (source.schema.nonEmpty)
+      reader.schema(source.schema.mkString(", "))
+
+    val df = reader
       .format(source.format)
       .options(source.readerOptions)
       .load(filePath.toString)

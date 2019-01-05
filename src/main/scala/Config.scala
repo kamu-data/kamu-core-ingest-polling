@@ -7,7 +7,7 @@ case class Source(
   url: URL,
   compression: Option[String],
   subPath: Option[Path],
-  schemaName: String,
+  schema: Vector[String] = Vector.empty,
   format: String,
   readerOptions: Map[String, String]
 )
