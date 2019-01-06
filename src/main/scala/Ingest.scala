@@ -39,7 +39,7 @@ class Ingest(config: AppConfig) {
       }
 
       if (!Files.exists(ingestedPath)) {
-        ingest(spark.newSession(), source, compressedPath, ingestedPath)
+        ingest(createSparkSubSession(spark), source, compressedPath, ingestedPath)
       }
     }
 
@@ -63,6 +63,10 @@ class Ingest(config: AppConfig) {
     df.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
+  }
+
+  def createSparkSubSession(sparkSession: SparkSession): SparkSession = {
+    sparkSession.newSession()
   }
 
 }
