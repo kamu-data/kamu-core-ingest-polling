@@ -9,12 +9,12 @@ case class Source(
   subPath: Option[Path],
   schema: Vector[String] = Vector.empty,
   format: String,
-  readerOptions: Map[String, String]
+  readerOptions: Map[String, String] = Map.empty
 )
 
 
 case class AppConfig(
   downloadDir: Path,
   dataDir: Path,
-  sources: Vector[Source]
+  sources: Vector[Source] = Vector.empty
 )
