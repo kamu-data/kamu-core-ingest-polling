@@ -2,7 +2,7 @@ import java.nio.file.{Files, Path, Paths}
 
 import org.apache.log4j.LogManager
 import org.apache.spark.serializer.KryoSerializer
-import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
+import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession, functions}
 import org.datasyslab.geospark.serde.GeoSparkKryoRegistrator
 import org.datasyslab.geosparksql.utils.GeoSparkSQLRegistrator
 
@@ -100,10 +100,9 @@ class Ingest(config: AppConfig) {
 
     df.createTempView("df")
 
-    spark.sql("""
-      SELECT ST_GeomFromGeoJSON(_geometry) as geometry, *
-      FROM df
-    """).drop("_geometry")
+    df.withColumn(
+      "geometry",
+      functions.callUDF("ST_GeomFromGeoJSON", df.col("geojson")))
   }
 
   def createSparkSubSession(sparkSession: SparkSession): SparkSession = {

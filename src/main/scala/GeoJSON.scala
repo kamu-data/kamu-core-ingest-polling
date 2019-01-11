@@ -10,17 +10,17 @@ object GeoJSON {
   def toMultiLineJSON(filePath: Path, outPath: Path): Unit = {
     val fileInputStream = new FileInputStream(filePath.toString)
     val gzipInputStream = new GZIPInputStream(fileInputStream)
-    val json = parse(gzipInputStream, true)
+    val featureCollection = parse(gzipInputStream, true)
 
     val fileOutputStream = new FileOutputStream(outPath.toString)
     val gzipOutputStream = new GZIPOutputStream(fileOutputStream)
     val writer = new PrintWriter(gzipOutputStream)
 
-    val JArray(features) = json \ "features"
+    val JArray(features) = featureCollection \ "features"
     for (feature <- features) {
-      val geomString = compact(render(feature \ "geometry"))
+      val featureString = compact(render(feature))
 
-      val newObj = JObject("_geometry" -> JString(geomString))
+      val newObj = JObject("geojson" -> JString(featureString))
         .merge(feature \ "properties")
 
       writer.write(compact(render(newObj)))
