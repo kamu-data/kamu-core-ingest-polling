@@ -60,11 +60,18 @@ class Ingest(config: AppConfig) {
     val dataFrame = source.format.toLowerCase match {
       case "geojson" =>
         readGeoJSON(spark, source, filePath)
+      case "worldbank-csv" =>
+        readWorldbankCSV(spark, source, filePath)
       case _ =>
         readGeneric(spark, source, filePath)
     }
 
-    writeGeneric(dataFrame, outPath)
+    val normDF = if(source.schema.isEmpty)
+      normalizeSchema(dataFrame)
+    else
+      dataFrame
+
+    writeGeneric(normDF, outPath)
   }
 
   def readGeneric(spark: SparkSession, source: Source, filePath: Path): DataFrame = {
@@ -77,6 +84,16 @@ class Ingest(config: AppConfig) {
       .format(source.format)
       .options(source.readerOptions)
       .load(filePath.toString)
+  }
+
+  def normalizeSchema(df: DataFrame): DataFrame = {
+    var result = df
+    for(col <- df.columns) {
+      result = result.withColumnRenamed(
+        col,
+        col.replaceAll("[ ,;{}\\(\\)\\n\\t=]", "_"))
+    }
+    result
   }
 
   def writeGeneric(dataFrame: DataFrame, outPath: Path): Unit = {
@@ -103,6 +120,20 @@ class Ingest(config: AppConfig) {
     df.withColumn(
       "geometry",
       functions.callUDF("ST_GeomFromGeoJSON", df.col("geojson")))
+  }
+
+  // TODO: Replace with generic options to skin N lines
+  def readWorldbankCSV(spark: SparkSession, source: Source, filePath: Path): DataFrame = {
+    val preprocPath = Paths.get(
+      filePath.toString.replaceAll("\\.gz", ".pp.gz"))
+
+    logger.info(s"Pre-processing WorldBankCSV: in=$filePath, out=$preprocPath")
+    WorldBank.toPlainCSV(filePath, preprocPath)
+
+    readGeneric(
+      spark,
+      source.copy(format="csv"),
+      preprocPath)
   }
 
   def createSparkSubSession(sparkSession: SparkSession): SparkSession = {
