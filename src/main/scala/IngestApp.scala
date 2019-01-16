@@ -9,7 +9,11 @@ object IngestApp {
 
     val config = pureconfig.loadConfigOrThrow[AppConfig]
 
-    val ingest = new Ingest(config)
+    val configWithDefaults = config.copy(
+      sources = config.sources.map(source => source.copy(
+        readerOptions = Source.DEFAULT_READER_OPTIONS ++ source.readerOptions)))
+
+    val ingest = new Ingest(configWithDefaults)
     ingest.pollAndIngest()
   }
 }
