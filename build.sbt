@@ -35,3 +35,6 @@ libraryDependencies ++= Seq(
   "com.holdenkarau" %% "spark-testing-base" % s"${sparkVersion}_0.11.0" % "test",
   "org.apache.spark" %% "spark-hive" % sparkVersion % "test"
 )
+
+
+dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7.1"

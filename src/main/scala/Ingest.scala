@@ -57,7 +57,7 @@ class Ingest(config: AppConfig) {
   def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: Path): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
 
-    val dataFrame = source.format.toLowerCase match {
+    val dataFrameRaw = source.format.toLowerCase match {
       case "geojson" =>
         readGeoJSON(spark, source, filePath)
       case "worldbank-csv" =>
@@ -66,12 +66,11 @@ class Ingest(config: AppConfig) {
         readGeneric(spark, source, filePath)
     }
 
-    val normDF = if(source.schema.isEmpty)
-      normalizeSchema(dataFrame)
-    else
-      dataFrame
+    val dataFrame = ensureEventTime(
+        normalizeSchema(dataFrameRaw, source),
+        source)
 
-    writeGeneric(normDF, outPath)
+    writeGeneric(dataFrame, outPath)
   }
 
   def readGeneric(spark: SparkSession, source: Source, filePath: Path): DataFrame = {
@@ -84,16 +83,6 @@ class Ingest(config: AppConfig) {
       .format(source.format)
       .options(source.readerOptions)
       .load(filePath.toString)
-  }
-
-  def normalizeSchema(df: DataFrame): DataFrame = {
-    var result = df
-    for(col <- df.columns) {
-      result = result.withColumnRenamed(
-        col,
-        col.replaceAll("[ ,;{}\\(\\)\\n\\t=]", "_"))
-    }
-    result
   }
 
   def writeGeneric(dataFrame: DataFrame, outPath: Path): Unit = {
@@ -134,6 +123,36 @@ class Ingest(config: AppConfig) {
       spark,
       source.copy(format="csv"),
       preprocPath)
+  }
+
+  def normalizeSchema(df: DataFrame, source: Source): DataFrame = {
+    if(source.schema.nonEmpty)
+      return df
+
+    var result = df
+    for(col <- df.columns) {
+      result = result.withColumnRenamed(
+        col,
+        col.replaceAll("[ ,;{}\\(\\)\\n\\t=]", "_"))
+    }
+    result
+  }
+
+  def ensureEventTime(df: DataFrame, source: Source): DataFrame = {
+    if (source.eventTimeColumn.isDefined) {
+      val dfTemp = df.withColumnRenamed(
+        source.eventTimeColumn.get,
+        Source.EVENT_TIME_COLUMN)
+
+      dfTemp.withColumn(
+        Source.EVENT_TIME_COLUMN,
+        functions.to_timestamp(
+          dfTemp.col(Source.EVENT_TIME_COLUMN),
+          source.eventTimeColumnFormat))
+    } else {
+      import org.apache.spark.sql.functions
+      df.withColumn(Source.EVENT_TIME_COLUMN, functions.current_timestamp())
+    }
   }
 
   def createSparkSubSession(sparkSession: SparkSession): SparkSession = {
