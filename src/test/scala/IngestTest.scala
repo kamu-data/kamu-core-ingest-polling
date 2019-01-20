@@ -15,13 +15,13 @@ class IngestTest extends FunSuite with DataFrameSuiteBase {
     val raw = sc.parallelize(Seq(
       "2000-01-01T00:00:00-08:00",
       "2000-01-01T00:00:00Z"
-    )).toDF("strEventTime")
+    )).toDF("incidentTime")
 
     val source = Source(
       id = "x",
       url = new URL("http://localhost"),
       format = "csv",
-      eventTimeColumn = Some("strEventTime"))
+      eventTimeColumn = Some("incidentTime"))
 
     val ingest = new Ingest(AppConfig(
       Paths.get("."),
@@ -34,7 +34,7 @@ class IngestTest extends FunSuite with DataFrameSuiteBase {
     val expected = sc.parallelize(Seq(
       new Timestamp(946713600000L),
       new Timestamp(946684800000L)
-    )).toDF("eventTime")
+    )).toDF("incidentTime")
 
     assertDataFrameEquals(expected, df)
   }

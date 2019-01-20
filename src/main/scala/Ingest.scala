@@ -140,14 +140,10 @@ class Ingest(config: AppConfig) {
 
   def ensureEventTime(df: DataFrame, source: Source): DataFrame = {
     if (source.eventTimeColumn.isDefined) {
-      val dfTemp = df.withColumnRenamed(
+      df.withColumn(
         source.eventTimeColumn.get,
-        Source.EVENT_TIME_COLUMN)
-
-      dfTemp.withColumn(
-        Source.EVENT_TIME_COLUMN,
         functions.to_timestamp(
-          dfTemp.col(Source.EVENT_TIME_COLUMN),
+          df.col(source.eventTimeColumn.get),
           source.eventTimeColumnFormat))
     } else {
       import org.apache.spark.sql.functions
