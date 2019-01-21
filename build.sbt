@@ -1,9 +1,5 @@
-name := "kamu-ingest-polling"
+name := "ingest-polling"
 version := "0.0.1"
-scalaVersion := "2.11.12"
-
-val sparkVersion = "2.4.0"
-
 
 // For testing with Spark
 fork in Test := true
@@ -23,8 +19,8 @@ libraryDependencies ++= Seq(
   "org.json4s" %% "json4s-jackson" % "3.5.3",
 
   // Spark
-  "org.apache.spark" %% "spark-core" % sparkVersion % "provided",
-  "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
+  "org.apache.spark" %% "spark-core" % Versions.spark % "provided",
+  "org.apache.spark" %% "spark-sql" % Versions.spark % "provided",
 
   // GeoSpark
   "org.datasyslab" % "geospark" % "1.1.3",
@@ -32,8 +28,8 @@ libraryDependencies ++= Seq(
 
   // Testing
   "org.scalatest" %% "scalatest" % "3.0.5" % "test",
-  "com.holdenkarau" %% "spark-testing-base" % s"${sparkVersion}_0.11.0" % "test",
-  "org.apache.spark" %% "spark-hive" % sparkVersion % "test"
+  "com.holdenkarau" %% "spark-testing-base" % s"${Versions.spark}_0.11.0" % "test",
+  "org.apache.spark" %% "spark-hive" % Versions.spark % "test"
 )
 
 
