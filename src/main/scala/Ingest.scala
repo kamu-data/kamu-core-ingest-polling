@@ -66,9 +66,7 @@ class Ingest(config: AppConfig) {
         readGeneric(spark, source, filePath)
     }
 
-    val dataFrame = ensureEventTime(
-        normalizeSchema(dataFrameRaw, source),
-        source)
+    val dataFrame = normalizeSchema(dataFrameRaw, source)
 
     writeGeneric(dataFrame, outPath)
   }
@@ -136,19 +134,6 @@ class Ingest(config: AppConfig) {
         col.replaceAll("[ ,;{}\\(\\)\\n\\t=]", "_"))
     }
     result
-  }
-
-  def ensureEventTime(df: DataFrame, source: Source): DataFrame = {
-    if (source.eventTimeColumn.isDefined) {
-      df.withColumn(
-        source.eventTimeColumn.get,
-        functions.to_timestamp(
-          df.col(source.eventTimeColumn.get),
-          source.eventTimeColumnFormat))
-    } else {
-      import org.apache.spark.sql.functions
-      df.withColumn(Source.EVENT_TIME_COLUMN, functions.current_timestamp())
-    }
   }
 
   def createSparkSubSession(sparkSession: SparkSession): SparkSession = {

@@ -3,8 +3,6 @@ import java.nio.file.Path
 
 
 object Source {
-  val EVENT_TIME_COLUMN = "eventTime"
-
   val DEFAULT_READER_OPTIONS: Map[String, String] = Map(
     "mode" -> "FAILFAST"
   )
@@ -27,20 +25,7 @@ case class Source(
   /** A DDL-formatted schema that can be used to cast values into
     * more appropriate data types.
     */
-  schema: Vector[String] = Vector.empty,
-
-  /** Name of the column that should be used as event time.
-    *
-    * If not provided the system will use the ingestion time
-    * as event time.
-    */
-  eventTimeColumn: Option[String],
-
-  /** Format string to use when parsing the [[Source.eventTimeColumn]].
-    *
-    * Defaults to Zulu time RFC3339 format.
-    */
-  eventTimeColumnFormat: String = "yyyy-MM-dd'T'HH:mm:ssX"
+  schema: Vector[String] = Vector.empty
 )
 
 
