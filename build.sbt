@@ -2,6 +2,7 @@ name := "ingest-polling"
 version := "0.0.1"
 
 // For testing with Spark
+test in assembly := {}
 fork in Test := true
 parallelExecution in Test := false
 javaOptions ++= Seq("-Xms512M", "-Xmx2048M", "-XX:+CMSClassUnloadingEnabled")
