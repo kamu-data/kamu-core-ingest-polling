@@ -1,5 +1,6 @@
 {
   "downloadDir": "data/download",
+  "cacheDir": "data/cache",
   "dataDir": "data/processed",
   "sources": []
 }

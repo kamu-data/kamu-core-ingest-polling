@@ -30,7 +30,15 @@ case class Source(
 
 
 case class AppConfig(
+  /** Directory to store downloaded data in before processing */
   downloadDir: Path,
+
+  /** Directory to store cache information not to re-download
+    * data if it didn't change
+    */
+  checkpointDir: Path,
+
+  /** Root data set directory for ingested raw data */
   dataDir: Path,
   sources: Vector[Source] = Vector.empty
 )

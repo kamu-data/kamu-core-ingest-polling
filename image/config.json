@@ -1,5 +1,6 @@
 {
-  "dataDir": "/opt/root",
-  "downloadDir": "/opt/poll",
+  "downloadDir": "/opt/data/poll",
+  "checkpointDir": "/opt/data/checkpoint",
+  "dataDir": "/opt/data/root",
   "sources": []
 }

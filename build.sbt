@@ -13,8 +13,7 @@ libraryDependencies ++= Seq(
   "com.github.pureconfig" %% "pureconfig" % "0.10.1",
 
   // HTTP Utils
-  "org.scalaj" %% "scalaj-http" % "2.4.1",
-  "commons-io" % "commons-io" % "2.6",
+  "com.softwaremill.sttp" %% "core" % "1.5.10",
 
   // Serialization
   "org.json4s" %% "json4s-jackson" % "3.5.3",

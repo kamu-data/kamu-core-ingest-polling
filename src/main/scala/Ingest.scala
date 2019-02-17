@@ -1,4 +1,4 @@
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Path, Paths}
 
 import org.apache.log4j.LogManager
 import org.apache.spark.serializer.KryoSerializer
@@ -17,20 +17,15 @@ class Ingest(config: AppConfig) {
     logger.info(s"Starting ingest")
     logger.info(s"Running with config: $config")
 
-    val spark = SparkSession.builder
-      .appName("ingest.polling")
-      // TODO: GeoSpark initialization
-      .config("spark.serializer", classOf[KryoSerializer].getName)
-      .config("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
-      //
-      .getOrCreate()
-
     for (source <- config.sources) {
       logger.info(s"Processing source: ${source.id}")
 
       val downloadPath = config.downloadDir
         .resolve(source.id)
         .resolve("data.bin")
+
+      val cacheDir = config.checkpointDir
+        .resolve(source.id)
 
       val compressedPath = config.downloadDir
         .resolve(source.id)
@@ -39,19 +34,16 @@ class Ingest(config: AppConfig) {
       val ingestedPath = config.dataDir
         .resolve(source.id)
 
-      val downloadResult = fileCache.maybeDownload(source.url, downloadPath)
+      val downloadResult = fileCache.maybeDownload(source.url, downloadPath, cacheDir)
 
-      if (!downloadResult.wasUpToDate || !Files.exists(compressedPath)) {
+      if (!downloadResult.wasUpToDate) {
         compression.process(source, downloadPath, compressedPath)
-      }
 
-      if (!Files.exists(ingestedPath)) {
-        ingest(createSparkSubSession(spark), source, compressedPath, ingestedPath)
+        ingest(getSparkSubSession(sparkSession), source, compressedPath, ingestedPath)
       }
     }
 
     logger.info(s"Finished ingest run")
-    spark.close()
   }
 
   def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: Path): Unit = {
@@ -136,7 +128,15 @@ class Ingest(config: AppConfig) {
     result
   }
 
-  def createSparkSubSession(sparkSession: SparkSession): SparkSession = {
+  def sparkSession: SparkSession = {
+    SparkSession.builder
+      .appName("ingest.polling")
+      .config("spark.serializer", classOf[KryoSerializer].getName)
+      .config("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
+      .getOrCreate()
+  }
+
+  def getSparkSubSession(sparkSession: SparkSession): SparkSession = {
     val subSession = sparkSession.newSession()
     GeoSparkSQLRegistrator.registerAll(subSession)
     subSession
