@@ -10,7 +10,8 @@ javaOptions ++= Seq("-Xms512M", "-Xmx2048M", "-XX:+CMSClassUnloadingEnabled")
 
 libraryDependencies ++= Seq(
   // Config
-  "com.github.pureconfig" %% "pureconfig" % "0.10.1",
+  "com.github.pureconfig" %% "pureconfig" % "0.10.2",
+  "com.github.pureconfig" %% "pureconfig-yaml" % "0.10.2",
 
   // HTTP Utils
   "com.softwaremill.sttp" %% "core" % "1.5.10",
