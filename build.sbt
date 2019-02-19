@@ -14,7 +14,7 @@ libraryDependencies ++= Seq(
   "com.github.pureconfig" %% "pureconfig-yaml" % "0.10.2",
 
   // HTTP Utils
-  "com.softwaremill.sttp" %% "core" % "1.5.10",
+  "org.scalaj" %% "scalaj-http" % "2.4.1",
 
   // Serialization
   "org.json4s" %% "json4s-jackson" % "3.5.3",

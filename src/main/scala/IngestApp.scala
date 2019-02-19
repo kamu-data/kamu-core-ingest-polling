@@ -8,6 +8,4 @@ object IngestApp {
     val ingest = new Ingest(config)
     ingest.pollAndIngest()
   }
-
-
 }

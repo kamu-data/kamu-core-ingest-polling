@@ -1,19 +1,21 @@
-import java.io.{FileInputStream, FileOutputStream, PrintWriter}
-import java.nio.file.Path
+import java.io.PrintWriter
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
-// Removes the poorly formatted header
-// Removes trailing commas from all lines
+import org.apache.hadoop.fs.{FileSystem, Path}
+
+/** Removes the poorly formatted header
+  * Removes trailing commas from all lines
+  */
 object WorldBank {
 
   val HEADER_NUM_LINES = 4
 
-  def toPlainCSV(filePath: Path, outPath: Path): Unit = {
-    val fileInputStream = new FileInputStream(filePath.toString)
+  def toPlainCSV(fileSystem: FileSystem, filePath: Path, outPath: Path): Unit = {
+    val fileInputStream = fileSystem.open(filePath)
     val gzipInputStream = new GZIPInputStream(fileInputStream)
     val source = scala.io.Source.fromInputStream(gzipInputStream)
 
-    val fileOutputStream = new FileOutputStream(outPath.toString)
+    val fileOutputStream = fileSystem.create(outPath)
     val gzipOutputStream = new GZIPOutputStream(fileOutputStream)
     val writer = new PrintWriter(gzipOutputStream)
 

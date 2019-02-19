@@ -1,17 +1,20 @@
 import java.io._
 import java.net.URI
-import java.nio.file.{Files, Path}
 import java.text.SimpleDateFormat
 import java.util.Date
 
+import FSUtils._
+import org.apache.commons.io.IOUtils
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
-import org.json4s.NoTypeHints
+import org.json4s.JsonAST.{JNull, JString}
 import org.json4s.jackson.Serialization
-import com.softwaremill.sttp._
+import org.json4s.{CustomSerializer, NoTypeHints}
+import scalaj.http._
 
 
 case class CacheInfo(
-  url: String,
+  url: URI,
   lastModified: Option[Date],
   eTag: Option[String],
   lastDownloadDate: Date
@@ -24,9 +27,8 @@ case class DownloadResult(
 )
 
 
-class FileCache() {
-  private implicit val formats = Serialization.formats(NoTypeHints)
-  private implicit val backend = HttpURLConnectionBackend()
+class FileCache(fileSystem: FileSystem) {
+  private implicit val formats = Serialization.formats(NoTypeHints) + UriSerializer
 
   private val logger = LogManager.getLogger(getClass.getName)
 
@@ -35,34 +37,37 @@ class FileCache() {
   def maybeDownload(url: URI, outPath: Path, cacheDir: Path): DownloadResult = {
     logger.info(s"Requested file: $url")
 
-    if (!Files.exists(outPath.getParent))
-      Files.createDirectories(outPath.getParent)
+    if (!fileSystem.exists(outPath.getParent))
+      fileSystem.mkdirs(outPath.getParent)
 
     val maybeStoredCacheInfo = getStoredCacheInfo(url, cacheDir)
     val outFile = new File(outPath.toString)
 
-    var requestBuilder = sttp
-      .response(asFile(outFile, true))
+    var request = Http(url.toString)
+      .method("GET")
 
     if(maybeStoredCacheInfo.isDefined) {
       val cacheInfo = maybeStoredCacheInfo.get
       logger.info(s"Cache info: $cacheInfo")
 
       if(cacheInfo.eTag.isDefined)
-        requestBuilder = requestBuilder
+        request = request
           .header("If-None-Match", cacheInfo.eTag.get)
 
       if(cacheInfo.lastModified.isDefined)
-        requestBuilder = requestBuilder
+        request = request
           .header("If-Modified-Since", lastModifiedHeaderFormat.format(cacheInfo.lastModified))
     } else {
       logger.info("Fist time download")
     }
 
-    val request = requestBuilder
-      .get(Uri(url))
-
-    val response = request.send()
+    // TODO: this will write body even in case of
+    val response = request.execute(bodyStream => {
+      val outputStream = fileSystem.create(outPath)
+      IOUtils.copy(bodyStream, outputStream)
+      bodyStream.close()
+      outputStream.close()
+    })
 
     if(response.code == 304) {
       logger.info("Data is up to date")
@@ -71,13 +76,13 @@ class FileCache() {
         wasUpToDate = true,
         cacheInfo = maybeStoredCacheInfo.get)
     }
-    else if(!response.is200) {
+    else if(!response.is2xx) {
       throw new RuntimeException(
-        s"Request failed: ${response.code} ${response.statusText}")
+        s"Request failed: ${response.statusLine}")
     }
 
     val freshCacheInfo = CacheInfo(
-      url = url.toString,
+      url = url,
       lastModified = response.header("LastModified").map(lastModifiedHeaderFormat.parse),
       eTag = response.header("ETag"),
       lastDownloadDate = new Date())
@@ -91,13 +96,13 @@ class FileCache() {
   def getStoredCacheInfo(url: URI, cacheDir: Path): Option[CacheInfo] = {
     val cachePath = getCacheInfoPath(cacheDir)
 
-    if(!Files.exists(cachePath))
+    if (!fileSystem.exists(cachePath))
       return None
 
     val reader = new BufferedReader(new FileReader(cachePath.toString))
     val cacheInfo = Serialization.read[CacheInfo](reader)
 
-    if (cacheInfo.url != url.toString)
+    if (cacheInfo.url != url)
       return None
 
     Some(cacheInfo)
@@ -106,16 +111,25 @@ class FileCache() {
   def storeCacheInfo(cacheInfo: CacheInfo, cacheDir: Path): Unit = {
     val cachePath = getCacheInfoPath(cacheDir)
 
-    if (!Files.exists(cachePath.getParent))
-      Files.createDirectories(cachePath.getParent)
+    if (!fileSystem.exists(cachePath.getParent))
+      fileSystem.mkdirs(cachePath.getParent)
 
-    val writer = new BufferedWriter(new FileWriter(cachePath.toString))
-    Serialization.write(cacheInfo, writer)
-    writer.close()
+    val outputStream = fileSystem.create(cachePath)
+    Serialization.write(cacheInfo, outputStream)
+    outputStream.close()
   }
 
   def getCacheInfoPath(cacheDir: Path): Path = {
-    cacheDir
-      .resolve("cacheInfo.json")
+    cacheDir.resolve(AppConfig.pollCacheFileName)
   }
 }
+
+
+case object UriSerializer extends CustomSerializer[URI](
+  format => ({
+    case JString(uri) => URI.create(uri)
+    case JNull => null
+  }, {
+    case uri: URI => JString(uri.toString)
+  })
+)

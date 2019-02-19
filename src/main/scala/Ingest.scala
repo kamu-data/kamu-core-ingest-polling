@@ -1,18 +1,20 @@
-import java.net.URI
-import java.nio.file.{Path, Paths}
-
+import FSUtils._
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
+import org.apache.spark.SparkConf
+import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession, functions}
 import org.datasyslab.geospark.serde.GeoSparkKryoRegistrator
 import org.datasyslab.geosparksql.utils.GeoSparkSQLRegistrator
 
+
 class Ingest(config: AppConfig) {
   val logger = LogManager.getLogger(getClass.getName)
 
-  val fileCache = new FileCache()
-
-  val compression = new Compression()
+  val fileSystem = FileSystem.get(hadoopConf)
+  val fileCache = new FileCache(fileSystem)
+  val compression = new Compression(fileSystem)
 
   def pollAndIngest(): Unit = {
     logger.info(s"Starting ingest")
@@ -21,19 +23,18 @@ class Ingest(config: AppConfig) {
     for (source <- config.sources) {
       logger.info(s"Processing source: ${source.id}")
 
-      val downloadPath = Paths.get(config.downloadDir)
+      val downloadPath = config.downloadDir
         .resolve(source.id)
         .resolve("data.bin")
 
-      val cachePath = Paths.get(config.checkpointDir)
+      val cachePath = config.checkpointDir
         .resolve(source.id)
 
-      val compressedPath = Paths.get(config.downloadDir)
+      val compressedPath = config.downloadDir
         .resolve(source.id)
         .resolve("data.gz")
 
-      // TODO: Can't use NIO Path here since gs:// URLs don't work with it
-      val ingestedPath = URI.create(config.dataDir.toString + "/" + source.id)
+      val ingestedPath = config.dataDir.resolve(source.id)
 
       val downloadResult = fileCache.maybeDownload(source.url, downloadPath, cachePath)
 
@@ -47,7 +48,7 @@ class Ingest(config: AppConfig) {
     logger.info(s"Finished ingest run")
   }
 
-  def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: URI): Unit = {
+  def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: Path): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
 
     val dataFrameRaw = source.format.toLowerCase match {
@@ -76,7 +77,7 @@ class Ingest(config: AppConfig) {
       .load(filePath.toString)
   }
 
-  def writeGeneric(dataFrame: DataFrame, outPath: URI): Unit = {
+  def writeGeneric(dataFrame: DataFrame, outPath: Path): Unit = {
     dataFrame.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
@@ -84,11 +85,12 @@ class Ingest(config: AppConfig) {
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
   def readGeoJSON(spark: SparkSession, source: Source, filePath: Path): DataFrame = {
-    val splitPath = Paths.get(
-      filePath.toString.replaceAll("\\.gz", ".sjson.gz"))
+
+    val splitPath = filePath.getParent.resolve(
+      filePath.getName.replaceAll("\\.gz", ".sjson.gz"))
 
     logger.info(s"Pre-processing GeoJSON: in=$filePath, out=$splitPath")
-    GeoJSON.toMultiLineJSON(filePath, splitPath)
+    GeoJSON.toMultiLineJSON(fileSystem, filePath, splitPath)
 
     val df = readGeneric(
       spark,
@@ -102,13 +104,13 @@ class Ingest(config: AppConfig) {
       functions.callUDF("ST_GeomFromGeoJSON", df.col("geojson")))
   }
 
-  // TODO: Replace with generic options to skin N lines
+  // TODO: Replace with generic options to skip N lines
   def readWorldbankCSV(spark: SparkSession, source: Source, filePath: Path): DataFrame = {
-    val preprocPath = Paths.get(
-      filePath.toString.replaceAll("\\.gz", ".pp.gz"))
+    val preprocPath = filePath.getParent.resolve(
+      filePath.getName.replaceAll("\\.gz", ".pp.gz"))
 
     logger.info(s"Pre-processing WorldBankCSV: in=$filePath, out=$preprocPath")
-    WorldBank.toPlainCSV(filePath, preprocPath)
+    WorldBank.toPlainCSV(fileSystem, filePath, preprocPath)
 
     readGeneric(
       spark,
@@ -129,11 +131,20 @@ class Ingest(config: AppConfig) {
     result
   }
 
+  def sparkConf: SparkConf = {
+    new SparkConf()
+      .setAppName("ingest.polling")
+      .set("spark.serializer", classOf[KryoSerializer].getName)
+      .set("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
+  }
+
+  def hadoopConf: org.apache.hadoop.conf.Configuration = {
+    SparkHadoopUtil.get.newConfiguration(sparkConf)
+  }
+
   def sparkSession: SparkSession = {
     SparkSession.builder
-      .appName("ingest.polling")
-      .config("spark.serializer", classOf[KryoSerializer].getName)
-      .config("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
+      .config(sparkConf)
       .getOrCreate()
   }
 
