@@ -1,3 +1,4 @@
+import java.net.URI
 import java.nio.file.{Path, Paths}
 
 import org.apache.log4j.LogManager
@@ -20,21 +21,21 @@ class Ingest(config: AppConfig) {
     for (source <- config.sources) {
       logger.info(s"Processing source: ${source.id}")
 
-      val downloadPath = config.downloadDir
+      val downloadPath = Paths.get(config.downloadDir)
         .resolve(source.id)
         .resolve("data.bin")
 
-      val cacheDir = config.checkpointDir
+      val cachePath = Paths.get(config.checkpointDir)
         .resolve(source.id)
 
-      val compressedPath = config.downloadDir
+      val compressedPath = Paths.get(config.downloadDir)
         .resolve(source.id)
         .resolve("data.gz")
 
-      val ingestedPath = config.dataDir
-        .resolve(source.id)
+      // TODO: Can't use NIO Path here since gs:// URLs don't work with it
+      val ingestedPath = URI.create(config.dataDir.toString + "/" + source.id)
 
-      val downloadResult = fileCache.maybeDownload(source.url, downloadPath, cacheDir)
+      val downloadResult = fileCache.maybeDownload(source.url, downloadPath, cachePath)
 
       if (!downloadResult.wasUpToDate) {
         compression.process(source, downloadPath, compressedPath)
@@ -46,7 +47,7 @@ class Ingest(config: AppConfig) {
     logger.info(s"Finished ingest run")
   }
 
-  def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: Path): Unit = {
+  def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: URI): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
 
     val dataFrameRaw = source.format.toLowerCase match {
@@ -75,7 +76,7 @@ class Ingest(config: AppConfig) {
       .load(filePath.toString)
   }
 
-  def writeGeneric(dataFrame: DataFrame, outPath: Path): Unit = {
+  def writeGeneric(dataFrame: DataFrame, outPath: URI): Unit = {
     dataFrame.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)

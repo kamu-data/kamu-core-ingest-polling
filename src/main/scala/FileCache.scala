@@ -1,5 +1,5 @@
 import java.io._
-import java.net.URL
+import java.net.URI
 import java.nio.file.{Files, Path}
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -32,7 +32,7 @@ class FileCache() {
 
   private val lastModifiedHeaderFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
 
-  def maybeDownload(url: URL, outPath: Path, cacheDir: Path): DownloadResult = {
+  def maybeDownload(url: URI, outPath: Path, cacheDir: Path): DownloadResult = {
     logger.info(s"Requested file: $url")
 
     if (!Files.exists(outPath.getParent))
@@ -60,7 +60,7 @@ class FileCache() {
     }
 
     val request = requestBuilder
-      .get(Uri(url.toURI))
+      .get(Uri(url))
 
     val response = request.send()
 
@@ -88,7 +88,7 @@ class FileCache() {
       cacheInfo = freshCacheInfo)
   }
 
-  def getStoredCacheInfo(url: URL, cacheDir: Path): Option[CacheInfo] = {
+  def getStoredCacheInfo(url: URI, cacheDir: Path): Option[CacheInfo] = {
     val cachePath = getCacheInfoPath(cacheDir)
 
     if(!Files.exists(cachePath))

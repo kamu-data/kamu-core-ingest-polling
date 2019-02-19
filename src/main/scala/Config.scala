@@ -1,4 +1,4 @@
-import java.net.URL
+import java.net.URI
 import java.nio.file.Path
 
 
@@ -11,7 +11,7 @@ object Source {
 
 case class Source(
   id: String,
-  url: URL,
+  url: URI,
   compression: Option[String] = None,
   subPath: Option[Path] = None,
   format: String,
@@ -31,14 +31,16 @@ case class Source(
 
 case class AppConfig(
   /** Directory to store downloaded data in before processing */
-  downloadDir: Path,
+  downloadDir: URI,
 
   /** Directory to store cache information not to re-download
     * data if it didn't change
     */
-  checkpointDir: Path,
+  checkpointDir: URI,
 
   /** Root data set directory for ingested raw data */
-  dataDir: Path,
+  dataDir: URI,
+
+  /** List of sources to poll */
   sources: Vector[Source] = Vector.empty
 )
