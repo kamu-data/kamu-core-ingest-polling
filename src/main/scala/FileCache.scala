@@ -18,7 +18,11 @@ case class CacheInfo(
   lastModified: Option[Date],
   eTag: Option[String],
   lastDownloadDate: Date
-)
+) {
+  def isCacheable: Boolean = {
+    eTag.isDefined || lastModified.isDefined
+  }
+}
 
 
 case class DownloadResult(
@@ -50,6 +54,11 @@ class FileCache(fileSystem: FileSystem) {
       val cacheInfo = maybeStoredCacheInfo.get
       logger.info(s"Cache info: $cacheInfo")
 
+      if (!cacheInfo.isCacheable) {
+        logger.warn(s"Skipping uncachable source")
+        return DownloadResult(wasUpToDate = true, cacheInfo)
+      }
+
       if(cacheInfo.eTag.isDefined)
         request = request
           .header("If-None-Match", cacheInfo.eTag.get)
@@ -72,9 +81,7 @@ class FileCache(fileSystem: FileSystem) {
     if(response.code == 304) {
       logger.info("Data is up to date")
 
-      return DownloadResult(
-        wasUpToDate = true,
-        cacheInfo = maybeStoredCacheInfo.get)
+      return DownloadResult(wasUpToDate = true, maybeStoredCacheInfo.get)
     }
     else if(!response.is2xx) {
       throw new RuntimeException(
@@ -87,10 +94,14 @@ class FileCache(fileSystem: FileSystem) {
       eTag = response.header("ETag"),
       lastDownloadDate = new Date())
 
+    if (!freshCacheInfo.isCacheable)
+      logger.warn(
+        s"Response for URL $url is uncacheable. " +
+        s"Data will not be updated automatically.")
+
     storeCacheInfo(freshCacheInfo, cacheDir)
-    DownloadResult(
-      wasUpToDate = false,
-      cacheInfo = freshCacheInfo)
+
+    DownloadResult(wasUpToDate = false, freshCacheInfo)
   }
 
   def getStoredCacheInfo(url: URI, cacheDir: Path): Option[CacheInfo] = {
@@ -99,8 +110,8 @@ class FileCache(fileSystem: FileSystem) {
     if (!fileSystem.exists(cachePath))
       return None
 
-    val reader = new BufferedReader(new FileReader(cachePath.toString))
-    val cacheInfo = Serialization.read[CacheInfo](reader)
+    val inputStream = fileSystem.open(cachePath)
+    val cacheInfo = Serialization.read[CacheInfo](inputStream)
 
     if (cacheInfo.url != url)
       return None

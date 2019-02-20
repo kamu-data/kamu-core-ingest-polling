@@ -16,9 +16,17 @@ object Source {
 
 case class Source(
   id: String,
+
   url: URI,
+
   compression: Option[String] = None,
+
+  /** Path to a data file within an archive */
   subPath: Option[Path] = None,
+
+  /** Regex for finding desired data file within an archive */
+  subPathRegex: Option[String] = None,
+
   format: String,
 
   /** Options to pass into the [[org.apache.spark.sql.DataFrameReader]]

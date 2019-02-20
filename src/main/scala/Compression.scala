@@ -1,3 +1,4 @@
+import java.util.regex.Pattern
 import java.util.zip.{GZIPOutputStream, ZipInputStream}
 
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -18,7 +19,9 @@ class Compression(fileSystem: FileSystem) {
         fileSystem.rename(inPath, outPath)
       case Some("zip") =>
         logger.info("Transcoding between compression formats")
-        transcodeZipToGZip(inPath, source.subPath, outPath)
+        val subPathRegex = source.subPathRegex.orElse(
+          source.subPath.map(p => Pattern.quote(p.toString)))
+        transcodeZipToGZip(inPath, subPathRegex, outPath)
         fileSystem.delete(inPath, false)
       case _ =>
         throw new NotImplementedError
@@ -41,7 +44,7 @@ class Compression(fileSystem: FileSystem) {
   }
 
   private def transcodeZipToGZip(
-      inPath: Path, subPath: Option[Path], outPath: Path): Unit = {
+      inPath: Path, subPathRegex: Option[String], outPath: Path): Unit = {
     val fileInStream = fileSystem.open(inPath)
     val zipInStream = new ZipInputStream(fileInStream)
 
@@ -51,7 +54,15 @@ class Compression(fileSystem: FileSystem) {
 
     Stream.continually(zipInStream.getNextEntry)
       .takeWhile(_ != null)
-      .filter(zipEntry => subPath.isEmpty || subPath.get == new Path(zipEntry.getName))
+      .filter(zipEntry => {
+        if (subPathRegex.isEmpty || zipEntry.getName.matches(subPathRegex.get)) {
+          logger.info(s"Picking Zip entry ${zipEntry.getName}")
+          true
+        } else {
+          logger.info(s"Ignoring Zip entry ${zipEntry.getName}")
+          false
+        }
+      })
       .foreach { zipEntry =>
         if (processed)
           throw new RuntimeException(
