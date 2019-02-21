@@ -134,8 +134,6 @@ class Ingest(config: AppConfig) {
   def sparkConf: SparkConf = {
     new SparkConf()
       .setAppName("ingest.polling")
-      .set("spark.serializer", classOf[KryoSerializer].getName)
-      .set("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
   }
 
   def hadoopConf: org.apache.hadoop.conf.Configuration = {
