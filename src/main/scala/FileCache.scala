@@ -12,6 +12,8 @@ import org.json4s.jackson.Serialization
 import org.json4s.{CustomSerializer, NoTypeHints}
 import scalaj.http._
 
+import scala.io.Source
+
 
 case class CacheInfo(
   url: URI,
@@ -38,14 +40,10 @@ class FileCache(fileSystem: FileSystem) {
 
   private val lastModifiedHeaderFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
 
-  def maybeDownload(url: URI, outPath: Path, cacheDir: Path): DownloadResult = {
+  def maybeDownload(url: URI, cacheDir: Path, handler: InputStream => Unit): DownloadResult = {
     logger.info(s"Requested file: $url")
 
-    if (!fileSystem.exists(outPath.getParent))
-      fileSystem.mkdirs(outPath.getParent)
-
     val maybeStoredCacheInfo = getStoredCacheInfo(url, cacheDir)
-    val outFile = new File(outPath.toString)
 
     var request = Http(url.toString)
       .method("GET")
@@ -70,12 +68,10 @@ class FileCache(fileSystem: FileSystem) {
       logger.info("Fist time download")
     }
 
-    // TODO: this will write body even in case of
-    val response = request.execute(bodyStream => {
-      val outputStream = fileSystem.create(outPath)
-      IOUtils.copy(bodyStream, outputStream)
-      bodyStream.close()
-      outputStream.close()
+    // TODO: this will write body even in case of error
+    val response = request.exec((code, _, bodyStream) => {
+      if (code == 200)
+        handler(bodyStream)
     })
 
     if(response.code == 304) {
@@ -83,7 +79,7 @@ class FileCache(fileSystem: FileSystem) {
 
       return DownloadResult(wasUpToDate = true, maybeStoredCacheInfo.get)
     }
-    else if(!response.is2xx) {
+    else if(response.code != 200) {
       throw new RuntimeException(
         s"Request failed: ${response.statusLine}")
     }

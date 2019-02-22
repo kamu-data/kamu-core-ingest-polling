@@ -1,88 +1,50 @@
+import java.io.{InputStream, OutputStream}
 import java.util.regex.Pattern
-import java.util.zip.{GZIPOutputStream, ZipInputStream}
+import java.util.zip.{GZIPInputStream, GZIPOutputStream, ZipInputStream}
 
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
+import org.xerial.snappy.SnappyHadoopCompatibleOutputStream
 
 
 class Compression(fileSystem: FileSystem) {
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def process(source: Source, inPath: Path, outPath: Path): Unit = {
+  def getExtractedStream(source: IngestSource, inputStream: InputStream): InputStream = {
     source.compression.map(_.toLowerCase) match {
       case None =>
         logger.info("Considering file uncompressed")
-        compressGZip(inPath, outPath)
-        fileSystem.delete(inPath, false)
+        inputStream
       case Some("gzip") =>
-        logger.info("File is already has desired compression")
-        fileSystem.rename(inPath, outPath)
+        logger.info("Extracting gzip")
+        new GZIPInputStream(inputStream)
       case Some("zip") =>
-        logger.info("Transcoding between compression formats")
+        logger.info("Extracting zip")
+
         val subPathRegex = source.subPathRegex.orElse(
           source.subPath.map(p => Pattern.quote(p.toString)))
-        transcodeZipToGZip(inPath, subPathRegex, outPath)
-        fileSystem.delete(inPath, false)
+
+        val stream = subPathRegex
+          .map(regex => ZipEntryStream
+            .findFirst(inputStream, regex)
+            .getOrElse(throw new RuntimeException("Failed to find an entry in the Zip file"))
+          )
+          .getOrElse(
+            ZipEntryStream.first(inputStream)
+          )
+
+        logger.info(s"Picking Zip entry ${stream.entry.getName}")
+        stream
       case _ =>
         throw new NotImplementedError
     }
   }
 
-  private def compressGZip(inPath: Path, outPath: Path): Unit = {
-    val fileInStream = fileSystem.open(inPath)
-    val fileOutStream = fileSystem.create(outPath)
-    val gzipOutStream = new GZIPOutputStream(fileOutStream)
+  val fileExtension = "bz2"
 
-    val buffer = new Array[Byte](4096)
-
-    Stream.continually(fileInStream.read(buffer))
-      .takeWhile(_ != -1)
-      .foreach(gzipOutStream.write(buffer, 0, _))
-
-    gzipOutStream.finish()
-    gzipOutStream.close()
-  }
-
-  private def transcodeZipToGZip(
-      inPath: Path, subPathRegex: Option[String], outPath: Path): Unit = {
-    val fileInStream = fileSystem.open(inPath)
-    val zipInStream = new ZipInputStream(fileInStream)
-
-    val fileOutStream = fileSystem.create(outPath)
-    val gzipOutStream = new GZIPOutputStream(fileOutStream)
-    var processed = false
-
-    Stream.continually(zipInStream.getNextEntry)
-      .takeWhile(_ != null)
-      .filter(zipEntry => {
-        if (subPathRegex.isEmpty || zipEntry.getName.matches(subPathRegex.get)) {
-          logger.info(s"Picking Zip entry ${zipEntry.getName}")
-          true
-        } else {
-          logger.info(s"Ignoring Zip entry ${zipEntry.getName}")
-          false
-        }
-      })
-      .foreach { zipEntry =>
-        if (processed)
-          throw new RuntimeException(
-            "Zip file has multiple entries but the subPath was not specified")
-
-        logger.info(s"Extracting zip entry: ${zipEntry.getName}")
-
-        val buffer = new Array[Byte](4096)
-
-        Stream.continually(zipInStream.read(buffer))
-          .takeWhile(_ != -1)
-          .foreach(gzipOutStream.write(buffer, 0, _))
-
-        gzipOutStream.finish()
-        gzipOutStream.close()
-        processed = true
-    }
-
-    if (!processed)
-      throw new RuntimeException("Failed to find an entry in the Zip file")
+  def toCompressedStream(outputStream: OutputStream): OutputStream = {
+    new BZip2CompressorOutputStream(outputStream)
   }
 
 }

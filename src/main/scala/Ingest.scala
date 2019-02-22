@@ -3,9 +3,7 @@ import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
 import org.apache.spark.SparkConf
 import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession, functions}
-import org.datasyslab.geospark.serde.GeoSparkKryoRegistrator
 import org.datasyslab.geosparksql.utils.GeoSparkSQLRegistrator
 
 
@@ -15,6 +13,7 @@ class Ingest(config: AppConfig) {
   val fileSystem = FileSystem.get(hadoopConf)
   val fileCache = new FileCache(fileSystem)
   val compression = new Compression(fileSystem)
+  val processing = new Processing()
 
   def pollAndIngest(): Unit = {
     logger.info(s"Starting ingest")
@@ -25,30 +24,34 @@ class Ingest(config: AppConfig) {
 
       val downloadPath = config.downloadDir
         .resolve(source.id)
-        .resolve("data.bin")
+        .resolve(s"data.${compression.fileExtension}")
 
       val cachePath = config.checkpointDir
         .resolve(source.id)
 
-      val compressedPath = config.downloadDir
-        .resolve(source.id)
-        .resolve("data.gz")
-
       val ingestedPath = config.dataDir.resolve(source.id)
 
-      val downloadResult = fileCache.maybeDownload(source.url, downloadPath, cachePath)
+      val downloadResult = fileCache.maybeDownload(source.url, cachePath, body => {
+        val extracted = compression.getExtractedStream(source, body)
+
+        if (!fileSystem.exists(downloadPath.getParent))
+          fileSystem.mkdirs(downloadPath.getParent)
+
+        val outputStream = fileSystem.create(downloadPath)
+        val compressed = compression.toCompressedStream(outputStream)
+
+        processing.process(source, extracted, compressed)
+      })
 
       if (!downloadResult.wasUpToDate) {
-        compression.process(source, downloadPath, compressedPath)
-
-        ingest(getSparkSubSession(sparkSession), source, compressedPath, ingestedPath)
+        ingest(getSparkSubSession(sparkSession), source, downloadPath, ingestedPath)
       }
     }
 
     logger.info(s"Finished ingest run")
   }
 
-  def ingest(spark: SparkSession, source: Source, filePath: Path, outPath: Path): Unit = {
+  def ingest(spark: SparkSession, source: IngestSource, filePath: Path, outPath: Path): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
 
     val dataFrameRaw = source.format.toLowerCase match {
@@ -62,10 +65,12 @@ class Ingest(config: AppConfig) {
 
     val dataFrame = normalizeSchema(dataFrameRaw, source)
 
-    writeGeneric(dataFrame, outPath)
+    dataFrame.write
+      .mode(SaveMode.Append)
+      .parquet(outPath.toString)
   }
 
-  def readGeneric(spark: SparkSession, source: Source, filePath: Path): DataFrame = {
+  def readGeneric(spark: SparkSession, source: IngestSource, filePath: Path): DataFrame = {
     val reader = spark.read
 
     if (source.schema.nonEmpty)
@@ -77,25 +82,12 @@ class Ingest(config: AppConfig) {
       .load(filePath.toString)
   }
 
-  def writeGeneric(dataFrame: DataFrame, outPath: Path): Unit = {
-    dataFrame.write
-      .mode(SaveMode.Append)
-      .parquet(outPath.toString)
-  }
-
   // TODO: This is very inefficient, should extend GeoSpark to support this
-  def readGeoJSON(spark: SparkSession, source: Source, filePath: Path): DataFrame = {
-
-    val splitPath = filePath.getParent.resolve(
-      filePath.getName.replaceAll("\\.gz", ".sjson.gz"))
-
-    logger.info(s"Pre-processing GeoJSON: in=$filePath, out=$splitPath")
-    GeoJSON.toMultiLineJSON(fileSystem, filePath, splitPath)
-
+  def readGeoJSON(spark: SparkSession, source: IngestSource, filePath: Path): DataFrame = {
     val df = readGeneric(
       spark,
       source.copy(format = "json"),
-      splitPath)
+      filePath)
 
     df.createTempView("df")
 
@@ -105,20 +97,14 @@ class Ingest(config: AppConfig) {
   }
 
   // TODO: Replace with generic options to skip N lines
-  def readWorldbankCSV(spark: SparkSession, source: Source, filePath: Path): DataFrame = {
-    val preprocPath = filePath.getParent.resolve(
-      filePath.getName.replaceAll("\\.gz", ".pp.gz"))
-
-    logger.info(s"Pre-processing WorldBankCSV: in=$filePath, out=$preprocPath")
-    WorldBank.toPlainCSV(fileSystem, filePath, preprocPath)
-
+  def readWorldbankCSV(spark: SparkSession, source: IngestSource, filePath: Path): DataFrame = {
     readGeneric(
       spark,
       source.copy(format="csv"),
-      preprocPath)
+      filePath)
   }
 
-  def normalizeSchema(df: DataFrame, source: Source): DataFrame = {
+  def normalizeSchema(df: DataFrame, source: IngestSource): DataFrame = {
     if(source.schema.nonEmpty)
       return df
 

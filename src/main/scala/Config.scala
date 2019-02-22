@@ -7,14 +7,14 @@ import pureconfig.{CamelCase, ConfigFieldMapping, ConfigReader}
 import pureconfig.generic.auto._
 
 
-object Source {
+object IngestSource {
   val DEFAULT_READER_OPTIONS: Map[String, String] = Map(
     "mode" -> "FAILFAST"
   )
 }
 
 
-case class Source(
+case class IngestSource(
   id: String,
 
   url: URI,
@@ -31,7 +31,7 @@ case class Source(
 
   /** Options to pass into the [[org.apache.spark.sql.DataFrameReader]]
     *
-    * Options in config will be merged with [[Source.DEFAULT_READER_OPTIONS]].
+    * Options in config will be merged with [[IngestSource.DEFAULT_READER_OPTIONS]].
     */
   readerOptions: Map[String, String] = Map.empty,
 
@@ -55,7 +55,7 @@ case class AppConfig(
   dataDir: Path,
 
   /** List of sources to poll */
-  sources: Vector[Source] = Vector.empty
+  sources: Vector[IngestSource] = Vector.empty
 )
 
 
@@ -87,6 +87,6 @@ object AppConfig {
     config.copy(
       sources = config.sources.map(source =>
         source.copy(
-          readerOptions = Source.DEFAULT_READER_OPTIONS ++ source.readerOptions)))
+          readerOptions = IngestSource.DEFAULT_READER_OPTIONS ++ source.readerOptions)))
   }
 }

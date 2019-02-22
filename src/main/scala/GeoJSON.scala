@@ -1,20 +1,14 @@
-import java.io.PrintWriter
-import java.util.zip.{GZIPInputStream, GZIPOutputStream}
+import java.io.{InputStream, OutputStream, PrintWriter}
 
-import org.apache.hadoop.fs.{FileSystem, Path}
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 
 object GeoJSON {
 
-  def toMultiLineJSON(fileSystem: FileSystem, filePath: Path, outPath: Path): Unit = {
-    val fileInputStream = fileSystem.open(filePath)
-    val gzipInputStream = new GZIPInputStream(fileInputStream)
-    val featureCollection = parse(gzipInputStream, true)
-
-    val fileOutputStream = fileSystem.create(outPath)
-    val gzipOutputStream = new GZIPOutputStream(fileOutputStream)
-    val writer = new PrintWriter(gzipOutputStream)
+  // TODO: This is very inefficient, should extend GeoSpark to support this
+  def toMultiLineJSON(inputStream: InputStream, outputStream: OutputStream): Unit = {
+    val featureCollection = parse(inputStream, true)
+    val writer = new PrintWriter(outputStream)
 
     val JArray(features) = featureCollection \ "features"
     for (feature <- features) {
@@ -27,6 +21,7 @@ object GeoJSON {
       writer.write("\n")
     }
 
+    inputStream.close()
     writer.close()
   }
 }
