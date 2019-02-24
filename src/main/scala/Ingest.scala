@@ -1,19 +1,25 @@
+import java.sql.Timestamp
+
 import FSUtils._
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
-import org.apache.spark.SparkConf
-import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession, functions}
+import org.apache.spark.sql._
 import org.datasyslab.geosparksql.utils.GeoSparkSQLRegistrator
 
 
-class Ingest(config: AppConfig) {
-  val logger = LogManager.getLogger(getClass.getName)
+class Ingest(
+  config: AppConf,
+  hadoopConf: org.apache.hadoop.conf.Configuration,
+  getSparkSession: () => SparkSession,
+  getSystemTime: () => Timestamp
+) {
+  private val logger = LogManager.getLogger(getClass.getName)
 
-  val fileSystem = FileSystem.get(hadoopConf)
-  val cachingDownloader = new CachingDownloader(fileSystem)
-  val compression = new Compression(fileSystem)
-  val processing = new Processing()
+  private val fileSystem = FileSystem.get(hadoopConf)
+  private lazy val sparkSession = getSparkSession()
+  private val cachingDownloader = new CachingDownloader(fileSystem)
+  private val compression = new Compression(fileSystem)
+  private val processing = new Processing()
 
   def pollAndIngest(): Unit = {
     logger.info(s"Starting ingest")
@@ -31,17 +37,7 @@ class Ingest(config: AppConfig) {
 
       val ingestedPath = config.dataDir.resolve(source.id)
 
-      val downloadResult = cachingDownloader.maybeDownload(source.url, cachePath, body => {
-        val extracted = compression.getExtractedStream(source, body)
-
-        if (!fileSystem.exists(downloadPath.getParent))
-          fileSystem.mkdirs(downloadPath.getParent)
-
-        val outputStream = fileSystem.create(downloadPath)
-        val compressed = compression.toCompressedStream(outputStream)
-
-        processing.process(source, extracted, compressed)
-      })
+      val downloadResult = maybeDownload(source, cachePath, downloadPath)
 
       if (!downloadResult.wasUpToDate) {
         ingest(getSparkSubSession(sparkSession), source, downloadPath, ingestedPath)
@@ -51,7 +47,21 @@ class Ingest(config: AppConfig) {
     logger.info(s"Finished ingest run")
   }
 
-  def ingest(spark: SparkSession, source: IngestSource, filePath: Path, outPath: Path): Unit = {
+  def maybeDownload(source: SourceConf, cachePath: Path, downloadPath: Path): DownloadResult = {
+    cachingDownloader.maybeDownload(source.url, cachePath, body => {
+      val extracted = compression.getExtractedStream(source, body)
+
+      if (!fileSystem.exists(downloadPath.getParent))
+        fileSystem.mkdirs(downloadPath.getParent)
+
+      val outputStream = fileSystem.create(downloadPath)
+      val compressed = compression.toCompressedStream(outputStream)
+
+      processing.process(source, extracted, compressed)
+    })
+  }
+
+  def ingest(spark: SparkSession, source: SourceConf, filePath: Path, outPath: Path): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
 
     val dataFrameRaw = source.format.toLowerCase match {
@@ -63,14 +73,18 @@ class Ingest(config: AppConfig) {
         readGeneric(spark, source, filePath)
     }
 
-    val dataFrame = normalizeSchema(dataFrameRaw, source)
+    val dataFrameNormalized = normalizeSchema(dataFrameRaw, source)
 
-    dataFrame.write
+    val dataFrame = preprocess(spark, dataFrameNormalized, source)
+
+    val dataFrameMerged = mergeWithExisting(spark, dataFrame, source, outPath)
+
+    dataFrameMerged.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
   }
 
-  def readGeneric(spark: SparkSession, source: IngestSource, filePath: Path): DataFrame = {
+  def readGeneric(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
     val reader = spark.read
 
     if (source.schema.nonEmpty)
@@ -83,7 +97,7 @@ class Ingest(config: AppConfig) {
   }
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
-  def readGeoJSON(spark: SparkSession, source: IngestSource, filePath: Path): DataFrame = {
+  def readGeoJSON(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
     val df = readGeneric(
       spark,
       source.copy(format = "json"),
@@ -97,14 +111,14 @@ class Ingest(config: AppConfig) {
   }
 
   // TODO: Replace with generic options to skip N lines
-  def readWorldbankCSV(spark: SparkSession, source: IngestSource, filePath: Path): DataFrame = {
+  def readWorldbankCSV(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
     readGeneric(
       spark,
       source.copy(format="csv"),
       filePath)
   }
 
-  def normalizeSchema(df: DataFrame, source: IngestSource): DataFrame = {
+  def normalizeSchema(df: DataFrame, source: SourceConf): DataFrame = {
     if(source.schema.nonEmpty)
       return df
 
@@ -117,19 +131,25 @@ class Ingest(config: AppConfig) {
     result
   }
 
-  def sparkConf: SparkConf = {
-    new SparkConf()
-      .setAppName("ingest.polling")
+  def preprocess(spark: SparkSession, df: DataFrame, source: SourceConf): DataFrame = {
+    if (source.preprocess.isEmpty)
+      return df
+
+    df.createTempView("input")
+    source.preprocess.foreach(spark.sql)
+
+    spark.sql(s"SELECT * FROM output")
   }
 
-  def hadoopConf: org.apache.hadoop.conf.Configuration = {
-    SparkHadoopUtil.get.newConfiguration(sparkConf)
-  }
+  def mergeWithExisting(spark: SparkSession, curr: DataFrame, source: SourceConf, outPath: Path): DataFrame = {
+    val mergeStrategy = MergeStrategy(source.mergeStrategy)
 
-  def sparkSession: SparkSession = {
-    SparkSession.builder
-      .config(sparkConf)
-      .getOrCreate()
+    val prev = if (fileSystem.exists(outPath))
+      Some(spark.read.parquet(outPath.toString))
+    else
+      None
+
+    mergeStrategy.merge(prev, curr, getSystemTime())
   }
 
   def getSparkSubSession(sparkSession: SparkSession): SparkSession = {

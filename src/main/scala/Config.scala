@@ -4,17 +4,20 @@ import org.apache.hadoop.fs.Path
 import pureconfig.generic.ProductHint
 import pureconfig.module.yaml.loadYamlOrThrow
 import pureconfig.{CamelCase, ConfigFieldMapping, ConfigReader}
-import pureconfig.generic.auto._
 
 
-object IngestSource {
+///////////////////////////////////////////////////////////////////////////////
+// Source Config
+///////////////////////////////////////////////////////////////////////////////
+
+object SourceConf {
   val DEFAULT_READER_OPTIONS: Map[String, String] = Map(
     "mode" -> "FAILFAST"
   )
 }
 
 
-case class IngestSource(
+case class SourceConf(
   id: String,
 
   url: URI,
@@ -31,18 +34,69 @@ case class IngestSource(
 
   /** Options to pass into the [[org.apache.spark.sql.DataFrameReader]]
     *
-    * Options in config will be merged with [[IngestSource.DEFAULT_READER_OPTIONS]].
+    * Options in config will be merged with [[SourceConf.DEFAULT_READER_OPTIONS]].
     */
   readerOptions: Map[String, String] = Map.empty,
 
   /** A DDL-formatted schema that can be used to cast values into
     * more appropriate data types.
     */
-  schema: Vector[String] = Vector.empty
+  schema: Vector[String] = Vector.empty,
+
+  /** Pre-processing steps to shape the data */
+  preprocess: Vector[String] = Vector.empty,
+
+  /** One of the supported merge strategies (see [[MergeStrategyConf]]) */
+  mergeStrategy: MergeStrategyConf = Append()
 )
 
 
-case class AppConfig(
+///////////////////////////////////////////////////////////////////////////////
+// Merge Strategies
+///////////////////////////////////////////////////////////////////////////////
+
+sealed trait MergeStrategyConf
+
+
+/** Append merge strategy.
+  *
+  * See [[AppendMergeStrategy]] class.
+  *
+  * @param addSystemTime whether to add a system time column to data
+  */
+case class Append(
+  addSystemTime: Boolean = false
+) extends MergeStrategyConf
+
+
+/** Ledger merge strategy.
+  *
+  * See [[LedgerMergeStrategy]] class.
+  */
+case class Ledger() extends MergeStrategyConf
+
+
+/** Snapshot merge strategy.
+  *
+  * See [[SnapshotMergeStrategy]] class.
+  * @param primaryKey name of the column that uniquely identifies the
+  *                   record throughout its lifetime
+  * @param modificationIndicator name of the column that always has a
+  *                              new value when row data changes, for
+  *                              example this can be a modification
+  *                              timestamp.
+  */
+case class Snapshot(
+  primaryKey: String,
+  modificationIndicator: String
+) extends MergeStrategyConf
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Application config
+///////////////////////////////////////////////////////////////////////////////
+
+case class AppConf(
   /** Directory to store downloaded data in before processing */
   downloadDir: Path,
 
@@ -55,38 +109,42 @@ case class AppConfig(
   dataDir: Path,
 
   /** List of sources to poll */
-  sources: Vector[IngestSource] = Vector.empty
-)
+  sources: Vector[SourceConf] = Vector.empty
+) {
+  def withDefaults(): AppConf = {
+    copy(
+      sources = sources.map(source =>
+        source.copy(
+          readerOptions = SourceConf.DEFAULT_READER_OPTIONS ++ source.readerOptions)))
+  }
+}
 
 
-object AppConfig {
+object AppConf {
+  import pureconfig.generic.auto._
+
   val configFileName = "poll-config.yaml"
   val pollCacheFileName = "poll-cache.json"
 
-  // Reader for hadoop fs paths
   implicit val pathReader = ConfigReader[String]
     .map(s => new Path(URI.create(s)))
 
-  // Hint to use camel case for config field names
-  implicit def hint[T]: ProductHint[T] =
-    ProductHint[T](ConfigFieldMapping(CamelCase, CamelCase))
+  implicit def hint[T]: ProductHint[T] = ProductHint[T](
+    ConfigFieldMapping(CamelCase, CamelCase),
+    useDefaultArgs = true,
+    allowUnknownKeys = false)
 
-  def load(): AppConfig = {
+  def load(): AppConf = {
     val configStream = getClass.getClassLoader.getResourceAsStream(configFileName)
     if (configStream == null)
       throw new RuntimeException(
         s"Unable to locate $configFileName on classpath")
 
     val configString = scala.io.Source.fromInputStream(configStream).mkString
-    val config = loadYamlOrThrow[AppConfig](configString)
+    val config = loadYamlOrThrow[AppConf](configString)
 
-    withDefaults(config)
+    config.withDefaults()
   }
 
-  def withDefaults(config: AppConfig): AppConfig = {
-    config.copy(
-      sources = config.sources.map(source =>
-        source.copy(
-          readerOptions = IngestSource.DEFAULT_READER_OPTIONS ++ source.readerOptions)))
-  }
+
 }

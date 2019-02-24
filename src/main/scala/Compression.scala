@@ -11,7 +11,7 @@ import org.xerial.snappy.SnappyHadoopCompatibleOutputStream
 class Compression(fileSystem: FileSystem) {
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def getExtractedStream(source: IngestSource, inputStream: InputStream): InputStream = {
+  def getExtractedStream(source: SourceConf, inputStream: InputStream): InputStream = {
     source.compression.map(_.toLowerCase) match {
       case None =>
         logger.info("Considering file uncompressed")

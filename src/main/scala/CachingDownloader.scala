@@ -85,7 +85,7 @@ class CachingDownloader(fileSystem: FileSystem) {
   }
 
   def getCacheInfoPath(cacheDir: Path): Path = {
-    cacheDir.resolve(AppConfig.pollCacheFileName)
+    cacheDir.resolve(AppConf.pollCacheFileName)
   }
 }
 

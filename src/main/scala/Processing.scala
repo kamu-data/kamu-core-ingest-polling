@@ -6,7 +6,7 @@ import org.apache.log4j.LogManager
 class Processing {
   val logger = LogManager.getLogger(getClass.getName)
 
-  def process(source: IngestSource, inputStream: InputStream, outputStream: OutputStream): Unit = {
+  def process(source: SourceConf, inputStream: InputStream, outputStream: OutputStream): Unit = {
     source.format.toLowerCase match {
       case "geojson" =>
         logger.info(s"Pre-processing as GeoJSON")
