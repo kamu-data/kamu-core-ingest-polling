@@ -11,7 +11,7 @@ class Ingest(config: AppConfig) {
   val logger = LogManager.getLogger(getClass.getName)
 
   val fileSystem = FileSystem.get(hadoopConf)
-  val fileCache = new FileCache(fileSystem)
+  val cachingDownloader = new CachingDownloader(fileSystem)
   val compression = new Compression(fileSystem)
   val processing = new Processing()
 
@@ -31,7 +31,7 @@ class Ingest(config: AppConfig) {
 
       val ingestedPath = config.dataDir.resolve(source.id)
 
-      val downloadResult = fileCache.maybeDownload(source.url, cachePath, body => {
+      val downloadResult = cachingDownloader.maybeDownload(source.url, cachePath, body => {
         val extracted = compression.getExtractedStream(source, body)
 
         if (!fileSystem.exists(downloadPath.getParent))
