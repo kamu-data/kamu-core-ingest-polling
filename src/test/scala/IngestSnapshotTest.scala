@@ -61,7 +61,7 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
         schema = inputSchema,
         mergeStrategy = Snapshot(
           primaryKey = "id",
-          modificationIndicator = "version")
+          modificationIndicator = Some("version"))
       ))
     ).withDefaults()
 
@@ -129,7 +129,7 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
       (ts(0), "added", 2, "bob", 200, 0),
       (ts(0), "added", 3, "charlie", 300, 0),
       (ts(1), "removed", 1, "alex", 100, 0),
-      (ts(1), "updated", 3, "charlie", 500, 1),
+      (ts(1), "changed", 3, "charlie", 500, 1),
       (ts(1), "added", 4, "dan", 100, 0)
     )).toDF("systemTime", "observed", "id", "name", "balance", "version")
 

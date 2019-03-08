@@ -23,7 +23,7 @@ class MergeStrategySnapshotTest
 
     val strategy = new SnapshotMergeStrategy(
       "id",
-      "version")
+      Some("version"))
 
     val actual = strategy.merge(None, curr, ts(0))
       .orderBy("systemTime", "id")
@@ -53,7 +53,7 @@ class MergeStrategySnapshotTest
 
     val strategy = new SnapshotMergeStrategy(
       "id",
-      "version")
+      Some("version"))
 
     val actual = strategy.merge(Some(prev), curr, ts(0))
 
@@ -65,7 +65,37 @@ class MergeStrategySnapshotTest
   }
 
 
-  test("PK and Indicator - all types of changes") {
+  test("PK and Indicator - all types of changes non versioned") {
+    val prev = sc.parallelize(Seq(
+      (ts(0), "added", 1, "A", "x"),
+      (ts(0), "added", 2, "B", "y"),
+      (ts(0), "added", 3, "C", "z")
+    )).toDF("systemTime", "observed", "id", "name", "data")
+
+    val curr = sc.parallelize(Seq(
+      (2, "B", "y"),
+      (3, "C", "zz"),
+      (4, "D", ".")
+    )).toDF("id", "name", "data")
+
+    val strategy = new SnapshotMergeStrategy(
+      "id",
+      None)
+
+    val actual = strategy.merge(Some(prev), curr, ts(0))
+      .orderBy("systemTime", "id")
+
+    val expected = sc.parallelize(Seq(
+      (ts(0), "removed", 1, "A", "x"),
+      (ts(0), "changed", 3, "C", "zz"),
+      (ts(0), "added",   4, "D", ".")
+    )).toDF("systemTime", "observed", "id", "name", "data")
+
+    assertDataFrameEquals(expected, actual, ignoreNullable = true)
+  }
+
+
+  test("PK and Indicator - all types of changes versioned") {
     val prev = sc.parallelize(Seq(
       (ts(0), "added", 1, "A", "x", 0),
       (ts(0), "added", 2, "B", "y", 0),
@@ -80,14 +110,14 @@ class MergeStrategySnapshotTest
 
     val strategy = new SnapshotMergeStrategy(
       "id",
-      "version")
+      Some("version"))
 
     val actual = strategy.merge(Some(prev), curr, ts(0))
       .orderBy("systemTime", "id")
 
     val expected = sc.parallelize(Seq(
       (ts(0), "removed", 1, "A", "x",  0),
-      (ts(0), "updated", 3, "C", "zz", 1),
+      (ts(0), "changed", 3, "C", "zz", 1),
       (ts(0), "added",   4, "D", ".",  0)
     )).toDF("systemTime", "observed", "id", "name", "data", "version")
 
@@ -110,14 +140,14 @@ class MergeStrategySnapshotTest
 
     val strategy = new SnapshotMergeStrategy(
       "id",
-      "version")
+      Some("version"))
 
     val actual = strategy.merge(Some(prev), curr, ts(0))
       .orderBy("systemTime", "id")
 
     val expected = sc.parallelize(Seq(
       (ts(0), "removed", 1, "A", "x",  0, null),
-      (ts(0), "updated", 3, "C", "zz", 1, "b"),
+      (ts(0), "changed", 3, "C", "zz", 1, "b"),
       (ts(0), "added",   4, "D", ".",  0, "c")
     )).toDF("systemTime", "observed", "id", "name", "data", "version", "ext")
 
@@ -140,15 +170,15 @@ class MergeStrategySnapshotTest
 
     val strategy = new SnapshotMergeStrategy(
       "id",
-      "version")
+      Some("version"))
 
     val actual = strategy.merge(Some(prev), curr, ts(0))
       .orderBy("systemTime", "id")
 
     val expected = sc.parallelize(Seq(
       (ts(0), "removed", 1, "A", "x", "a",  0),
-      (ts(0), "updated", 2, "B", "y", null, 1),
-      (ts(0), "updated", 3, "C", "z", null, 1),
+      (ts(0), "changed", 2, "B", "y", null, 1),
+      (ts(0), "changed", 3, "C", "z", null, 1),
       (ts(0), "added",   4, "D", ".", null, 0)
     )).toDF("systemTime", "observed", "id", "name", "data", "ext", "version")
 

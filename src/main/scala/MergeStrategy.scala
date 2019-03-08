@@ -83,28 +83,24 @@ class LedgerMergeStrategy (
   * This strategy relies on a user-specified primary key column to
   * correlate the rows between two snapshots.
   *
-  * For faster detection of modified rows this strategy also depends on
-  * user-specified modification indicator column that is guaranteed to
-  * change when any of the row data changes. This can be a column that
-  * contains a las modification date, an incremental version, or a data hash.
+  * If the data contains a column that is guaranteed to change whenever
+  * any of the data columns changes (for example this can be a last
+  * modification timestamp, an incremental version, or a data hash), then
+  * it can be specified as modification indicator to speed up the detection of
+  * modified rows.
   *
   * This strategy will always preserve all columns from existing and
   * new snapshots, so the set of columns can only grow.
   *
   * @param pk primary key column name
-  * @param modInd modification indicator column name
+  * @param modInd optional modification indicator column name
   * @param vocab vocabulary of system column names and values
   */
 class SnapshotMergeStrategy(
   pk: String,
-  modInd: String,
+  modInd: Option[String],
   vocab: Vocabulary = Vocabulary()
 ) extends MergeStrategy {
-  val systemTimeColumn = "systemTime"
-  val observedColumn = "observed"
-  val obsvAdded = "added"
-  val obsvRemoved = "removed"
-  val obsvUpdated = "updated"
 
   /** Performs snapshot merge.
     *
@@ -144,29 +140,55 @@ class SnapshotMergeStrategy(
       TimeSeriesUtils.empty(curr)
     }
 
-    val dataColumns = (prev.columns ++ curr.columns).distinct.toList
+    val combinedDataColumnNames = (prev.columns ++ curr.columns).distinct.toList
+
+    val changedPredicate = if (modInd.isDefined) {
+      curr(modInd.get) =!= prev(modInd.get)
+    } else {
+      // We consider data changed when
+      // either both columns exist and have different values
+      // or column disappears while having non-null value
+      // or column is added with non-null value
+      combinedDataColumnNames
+        .map(columnName => {
+          val pc = prev.getColumn(columnName)
+          val cc = curr.getColumn(columnName)
+          if (pc.isDefined && cc.isDefined) {
+            pc.get =!= cc.get
+          } else if (pc.isDefined) {
+            pc.get.isNotNull
+          } else {
+            cc.get.isNotNull
+          }
+        })
+        .foldLeft(lit(false))((a, b) => a || b)
+    }
+
+    def columnOrNull(df: DataFrame, name: String) =
+      df.getColumn(name).getOrElse(lit(null))
+
+    val resultDataColumns = combinedDataColumnNames
       .map(columnName =>
         when(
-          col(observedColumn) === obsvRemoved,
-          prev.getColumn(columnName).getOrElse(lit(null)))
-          .otherwise(
-            curr.getColumn(columnName).getOrElse(lit(null)))
-          .as(columnName))
+          col(vocab.observationColumn) === vocab.obsvRemoved,
+          columnOrNull(prev, columnName))
+        .otherwise(columnOrNull(curr, columnName))
+        .as(columnName))
 
-    val allColumns = col(systemTimeColumn) :: col(observedColumn) :: dataColumns
+    val resultColumns = col(vocab.systemTimeColumn) :: col(vocab.observationColumn) :: resultDataColumns
 
     curr
       .join(prev, prev(pk) === curr(pk), "full_outer")
       .filter(
-        curr(pk).isNull || prev(pk).isNull || curr(modInd) =!= prev(modInd))
+        curr(pk).isNull || prev(pk).isNull || changedPredicate)
       .withColumn(
-        systemTimeColumn,
+        vocab.systemTimeColumn,
         lit(systemTime))
       .withColumn(
-        observedColumn,
-        when(prev(pk).isNull, obsvAdded)
-          .when(curr(pk).isNull, obsvRemoved)
-          .otherwise(obsvUpdated))
-      .select(allColumns: _*)
+        vocab.observationColumn,
+        when(prev(pk).isNull, vocab.obsvAdded)
+          .when(curr(pk).isNull, vocab.obsvRemoved)
+          .otherwise(vocab.obsvChanged))
+      .select(resultColumns: _*)
   }
 }

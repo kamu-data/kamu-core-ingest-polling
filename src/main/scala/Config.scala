@@ -84,11 +84,13 @@ case class Ledger() extends MergeStrategyConf
   * @param modificationIndicator name of the column that always has a
   *                              new value when row data changes, for
   *                              example this can be a modification
-  *                              timestamp.
+  *                              timestamp, an incremental version, or a data
+  *                              hash. If not specified all data columns will
+  *                              be compared one by one.
   */
 case class Snapshot(
   primaryKey: String,
-  modificationIndicator: String
+  modificationIndicator: Option[String]
 ) extends MergeStrategyConf
 
 
