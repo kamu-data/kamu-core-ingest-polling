@@ -75,11 +75,16 @@ class Ingest(
 
     val dataFrameNormalized = normalizeSchema(dataFrameRaw, source)
 
-    val dataFrame = preprocess(spark, dataFrameNormalized, source)
+    val dataFramePreprocessed = preprocess(spark, dataFrameNormalized, source)
 
-    val dataFrameMerged = mergeWithExisting(spark, dataFrame, source, outPath)
+    val dataFrameMerged = mergeWithExisting(spark, dataFramePreprocessed, source, outPath)
 
-    dataFrameMerged.write
+    val dataFrameCoalesced = if (source.coalesce == 0)
+      dataFrameMerged
+    else
+      dataFrameMerged.coalesce(source.coalesce)
+
+    dataFrameCoalesced.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
   }

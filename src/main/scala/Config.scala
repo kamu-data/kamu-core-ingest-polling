@@ -47,7 +47,13 @@ case class SourceConf(
   preprocess: Vector[String] = Vector.empty,
 
   /** One of the supported merge strategies (see [[MergeStrategyConf]]) */
-  mergeStrategy: MergeStrategyConf = Append()
+  mergeStrategy: MergeStrategyConf = Append(),
+
+  /** Collapse partitions of the result to specified number
+    *
+    * If zero - the step will be skipped
+    */
+  coalesce: Int = 1
 )
 
 
