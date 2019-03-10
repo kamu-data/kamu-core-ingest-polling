@@ -1,10 +1,13 @@
 import java.sql.Timestamp
+import java.util.zip.ZipInputStream
 
 import FSUtils._
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
 import org.apache.spark.sql._
-import org.datasyslab.geosparksql.utils.GeoSparkSQLRegistrator
+import org.datasyslab.geospark.formatMapper.shapefileParser.ShapefileReader
+import org.datasyslab.geosparksql.utils.{Adapter, GeoSparkSQLRegistrator}
 
 
 class Ingest(
@@ -64,19 +67,20 @@ class Ingest(
   def ingest(spark: SparkSession, source: SourceConf, filePath: Path, outPath: Path): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
 
-    val dataFrameRaw = source.format.toLowerCase match {
+    val reader = source.format.toLowerCase match {
+      case "shapefile" =>
+        readShapefile _
       case "geojson" =>
-        readGeoJSON(spark, source, filePath)
+        readGeoJSON _
       case "worldbank-csv" =>
-        readWorldbankCSV(spark, source, filePath)
+        readWorldbankCSV _
       case _ =>
-        readGeneric(spark, source, filePath)
+        readGeneric _
     }
 
+    val dataFrameRaw = reader(spark, source, filePath)
     val dataFrameNormalized = normalizeSchema(dataFrameRaw, source)
-
     val dataFramePreprocessed = preprocess(spark, dataFrameNormalized, source)
-
     val dataFrameMerged = mergeWithExisting(spark, dataFramePreprocessed, source, outPath)
 
     val dataFrameCoalesced = if (source.coalesce == 0)
@@ -99,6 +103,24 @@ class Ingest(
       .format(source.format)
       .options(source.readerOptions)
       .load(filePath.toString)
+  }
+
+  // TODO: This is inefficient
+  def readShapefile(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
+    val extractedPath = filePath.getParent.resolve("shapefile")
+
+    val inputStream = fileSystem.open(filePath)
+    val bzip2Stream = new BZip2CompressorInputStream(inputStream)
+    val zipStream = new ZipInputStream(bzip2Stream)
+
+    FSUtils.extractZipFile(fileSystem, zipStream, extractedPath)
+
+    zipStream.close()
+
+    val rdd = ShapefileReader.readToGeometryRDD(
+      spark.sparkContext, extractedPath.toString)
+
+    Adapter.toDf(rdd, spark)
   }
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
