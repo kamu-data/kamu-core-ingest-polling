@@ -12,7 +12,7 @@ object MergeStrategy {
         new AppendMergeStrategy(
           addSystemTime = c.addSystemTime)
       case c: Ledger =>
-        new LedgerMergeStrategy()
+        new LedgerMergeStrategy(c.primaryKey)
       case c: Snapshot =>
         new SnapshotMergeStrategy(
           pk = c.primaryKey,
@@ -55,12 +55,48 @@ class AppendMergeStrategy (
 
 /** Ledger merge strategy.
   *
+  * This strategy should be used for data dumps containing append-only event
+  * streams. New data dumps can have new rows added, but once data already
+  * made it into one dump it never changes or disappears.
+  *
+  * A system time column will be added to the data to indicate the time
+  * when the record was observed first by the system.
+  *
+  * It relies on a user-specified primary key column to identify which records
+  * were already seen and not duplicate them.
+  *
+  * It will always preserve all columns from existing and new snapshots, so
+  * the set of columns can only grow.
+  *
+  * @param pk primary key column name
   */
 class LedgerMergeStrategy (
+  pk: String,
+  vocab: Vocabulary = Vocabulary()
 ) extends MergeStrategy {
 
-  override def merge(prev: Option[DataFrame], curr: DataFrame, systemTime: Timestamp): DataFrame = {
-    throw new NotImplementedError()
+  override def merge(
+    prevSeries: Option[DataFrame], currSeries: DataFrame,
+    systemTime: Timestamp
+  ): DataFrame = {
+    val curr = currSeries
+      .withColumn(vocab.systemTimeColumn, lit(systemTime))
+      .columnToFront(vocab.systemTimeColumn)
+
+    val prev = prevSeries.getOrElse(TimeSeriesUtils.empty(curr))
+
+    val combinedColumnNames = (prev.columns ++ curr.columns).distinct.toList
+
+    val resultColumns = combinedColumnNames
+      .map(columnName =>
+        curr.getColumn(columnName)
+          .getOrElse(lit(null))
+          .as(columnName))
+
+    curr
+      .join(prev, curr(pk) === prev(pk), "left_outer")
+      .filter(prev(pk).isNull)
+      .select(resultColumns: _*)
   }
 
 }
@@ -69,8 +105,9 @@ class LedgerMergeStrategy (
 /** Snapshot data merge strategy.
   *
   * This strategy should be used for data dumps that are taken periodically
-  * and only contain latest state. New data can have new rows added, and old
-  * rows either missing or changed.
+  * and only contain only the latest state of the observed entity or system.
+  * Over time such dumps can have new rows added, and old rows either missing
+  * or changed.
   *
   * This strategy transforms snapshot data into an append-only event stream
   * where data already added is immutable. It does so by treating rows in

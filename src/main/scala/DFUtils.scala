@@ -14,6 +14,24 @@ object DFUtils {
       else
         None
     }
+
+    /** Reorders columns in the [[DataFrame]] */
+    def columnToFront(columns: String*): DataFrame = {
+      val front = columns.toList
+      val back = df.columns.filter(!front.contains(_))
+      val newColumns = front ++ back
+      val head :: tail = newColumns
+      df.select(head, tail: _*)
+    }
+
+    /** Reorders columns in the [[DataFrame]] */
+    def columnToBack(columns: String*): DataFrame = {
+      val back = columns.toList
+      val front = df.columns.filter(!back.contains(_)).toList
+      val newColumns = front ++ back
+      val head :: tail = newColumns
+      df.select(head, tail: _*)
+    }
   }
 
   implicit class RelationalGroupedDatasetEx(val df: RelationalGroupedDataset) {

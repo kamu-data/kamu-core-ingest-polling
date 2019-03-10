@@ -65,7 +65,7 @@ class MergeStrategySnapshotTest
   }
 
 
-  test("PK and Indicator - all types of changes non versioned") {
+  test("PK Only - all types of changes") {
     val prev = sc.parallelize(Seq(
       (ts(0), "added", 1, "A", "x"),
       (ts(0), "added", 2, "B", "y"),
@@ -95,7 +95,7 @@ class MergeStrategySnapshotTest
   }
 
 
-  test("PK and Indicator - all types of changes versioned") {
+  test("PK and Indicator - all types of changes") {
     val prev = sc.parallelize(Seq(
       (ts(0), "added", 1, "A", "x", 0),
       (ts(0), "added", 2, "B", "y", 0),

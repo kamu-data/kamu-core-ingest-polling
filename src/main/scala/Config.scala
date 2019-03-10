@@ -78,8 +78,10 @@ case class Append(
 /** Ledger merge strategy.
   *
   * See [[LedgerMergeStrategy]] class.
+  * @param primaryKey name of the column that uniquely identifies the
+  *                   record throughout its lifetime
   */
-case class Ledger() extends MergeStrategyConf
+case class Ledger(primaryKey: String) extends MergeStrategyConf
 
 
 /** Snapshot merge strategy.
