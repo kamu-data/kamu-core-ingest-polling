@@ -4,6 +4,13 @@ object DFUtils {
 
   implicit class DataFrameEx(val df: DataFrame) {
 
+    def maybeTransform(condition: Boolean, tr: DataFrame => DataFrame): DataFrame = {
+      if (condition)
+        df.transform(tr)
+      else
+        df
+    }
+
     /** Get column if exists
       *
       * TODO: Will not work with nested columns

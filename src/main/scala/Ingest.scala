@@ -1,6 +1,7 @@
 import java.sql.Timestamp
 import java.util.zip.ZipInputStream
 
+import DFUtils._
 import FSUtils._
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -78,17 +79,12 @@ class Ingest(
         readGeneric _
     }
 
-    val dataFrameRaw = reader(spark, source, filePath)
-    val dataFrameNormalized = normalizeSchema(dataFrameRaw, source)
-    val dataFramePreprocessed = preprocess(spark, dataFrameNormalized, source)
-    val dataFrameMerged = mergeWithExisting(spark, dataFramePreprocessed, source, outPath)
-
-    val dataFrameCoalesced = if (source.coalesce == 0)
-      dataFrameMerged
-    else
-      dataFrameMerged.coalesce(source.coalesce)
-
-    dataFrameCoalesced.write
+    reader(spark, source, filePath)
+      .transform(normalizeSchema(source))
+      .transform(preprocess(source))
+      .transform(mergeWithExisting(source, outPath))
+      .maybeTransform(source.coalesce != 0, _.coalesce(source.coalesce))
+      .write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
   }
@@ -145,7 +141,7 @@ class Ingest(
       filePath)
   }
 
-  def normalizeSchema(df: DataFrame, source: SourceConf): DataFrame = {
+  def normalizeSchema(source: SourceConf)(df: DataFrame): DataFrame = {
     if(source.schema.nonEmpty)
       return df
 
@@ -158,9 +154,11 @@ class Ingest(
     result
   }
 
-  def preprocess(spark: SparkSession, df: DataFrame, source: SourceConf): DataFrame = {
+  def preprocess(source: SourceConf)(df: DataFrame): DataFrame = {
     if (source.preprocess.isEmpty)
       return df
+
+    val spark = df.sparkSession
 
     df.createTempView("input")
     source.preprocess.foreach(spark.sql)
@@ -168,7 +166,8 @@ class Ingest(
     spark.sql(s"SELECT * FROM output")
   }
 
-  def mergeWithExisting(spark: SparkSession, curr: DataFrame, source: SourceConf, outPath: Path): DataFrame = {
+  def mergeWithExisting(source: SourceConf, outPath: Path)(curr: DataFrame): DataFrame = {
+    val spark = curr.sparkSession
     val mergeStrategy = MergeStrategy(source.mergeStrategy)
 
     val prev = if (fileSystem.exists(outPath))
