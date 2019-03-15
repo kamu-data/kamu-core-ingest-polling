@@ -161,9 +161,17 @@ class Ingest(
     val spark = df.sparkSession
 
     df.createTempView("input")
-    source.preprocess.foreach(spark.sql)
 
-    spark.sql(s"SELECT * FROM output")
+    for (step <- source.preprocess) {
+      val tempResult = spark.sql(step.query)
+      if (step.view == "output")
+        return tempResult
+      else
+        tempResult.createTempView(s"`${step.view}`")
+    }
+
+    throw new RuntimeException(
+      "Pre-processing steps do not contain output query")
   }
 
   def mergeWithExisting(source: SourceConf, outPath: Path)(curr: DataFrame): DataFrame = {

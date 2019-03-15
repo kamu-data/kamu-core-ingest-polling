@@ -44,7 +44,7 @@ case class SourceConf(
   schema: Vector[String] = Vector.empty,
 
   /** Pre-processing steps to shape the data */
-  preprocess: Vector[String] = Vector.empty,
+  preprocess: Vector[StepConf] = Vector.empty,
 
   /** One of the supported merge strategies (see [[MergeStrategyConf]]) */
   mergeStrategy: MergeStrategyConf = Append(),
@@ -54,6 +54,12 @@ case class SourceConf(
     * If zero - the step will be skipped
     */
   coalesce: Int = 1
+)
+
+
+case class StepConf(
+  view: String,
+  query: String
 )
 
 
