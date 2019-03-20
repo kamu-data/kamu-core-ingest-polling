@@ -1,6 +1,10 @@
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
+import org.apache.spark.SparkConf
+import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.{lit, when}
+import org.datasyslab.geospark.serde.GeoSparkKryoRegistrator
+import org.datasyslab.geosparksql.utils.GeoSparkSQLRegistrator
 import org.scalatest.Suite
 
 object TestUtils {
@@ -17,6 +21,17 @@ object TestUtils {
 
 
 trait DataFrameSuiteBaseEx extends DataFrameSuiteBase { self: Suite =>
+
+  override def conf: SparkConf = {
+    super.conf
+      .set("spark.serializer", classOf[KryoSerializer].getName)
+      .set("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
+  }
+
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    GeoSparkSQLRegistrator.registerAll(spark)
+  }
 
   def assertDataFrameEquals(expected: DataFrame, actual: DataFrame, ignoreNullable: Boolean): Unit = {
     val exp = if (ignoreNullable) TestUtils.ignoreNullableSchema(expected) else expected

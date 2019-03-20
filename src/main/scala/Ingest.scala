@@ -7,6 +7,7 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
 import org.apache.spark.sql._
+import org.datasyslab.geospark.formatMapper.GeoJsonReader
 import org.datasyslab.geospark.formatMapper.shapefileParser.ShapefileReader
 import org.datasyslab.geosparksql.utils.{Adapter, GeoSparkSQLRegistrator}
 
@@ -116,21 +117,28 @@ class Ingest(
     val rdd = ShapefileReader.readToGeometryRDD(
       spark.sparkContext, extractedPath.toString)
 
-    Adapter.toDf(rdd, spark)
+    Adapter
+      .toDf(rdd, spark)
+      .withColumn(
+        "geometry",
+        functions.callUDF("ST_GeomFromWKT", functions.col("geometry"))
+      )
   }
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
   def readGeoJSON(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
-    val df = readGeneric(
-      spark,
-      source.copy(format = "json"),
-      filePath)
+    val rdd = GeoJsonReader.readToGeometryRDD(
+      spark.sparkContext,
+      filePath.toString,
+      false,
+      false)
 
-    df.createTempView("df")
-
-    df.withColumn(
-      "geometry",
-      functions.callUDF("ST_GeomFromGeoJSON", df.col("geojson")))
+    Adapter
+      .toDf(rdd, spark)
+      .withColumn(
+        "geometry",
+        functions.callUDF("ST_GeomFromWKT", functions.col("geometry"))
+      )
   }
 
   // TODO: Replace with generic options to skip N lines

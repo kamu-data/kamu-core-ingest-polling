@@ -3,7 +3,9 @@ import java.sql.Timestamp
 import org.apache.log4j.LogManager
 import org.apache.spark.SparkConf
 import org.apache.spark.deploy.SparkHadoopUtil
+import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.SparkSession
+import org.datasyslab.geospark.serde.GeoSparkKryoRegistrator
 
 
 object IngestApp {
@@ -17,6 +19,8 @@ object IngestApp {
   private def sparkConf(): SparkConf = {
     new SparkConf()
       .setAppName("ingest.polling")
+      .set("spark.serializer", classOf[KryoSerializer].getName)
+      .set("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
   }
 
   private def hadoopConf(): org.apache.hadoop.conf.Configuration = {

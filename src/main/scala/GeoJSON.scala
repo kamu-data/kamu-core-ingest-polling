@@ -12,12 +12,7 @@ object GeoJSON {
 
     val JArray(features) = featureCollection \ "features"
     for (feature <- features) {
-      val featureString = compact(render(feature))
-
-      val newObj = JObject("geojson" -> JString(featureString))
-        .merge(feature \ "properties")
-
-      writer.write(compact(render(newObj)))
+      writer.write(compact(render(feature)))
       writer.write("\n")
     }
 
