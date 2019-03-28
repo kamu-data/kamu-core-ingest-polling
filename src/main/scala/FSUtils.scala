@@ -24,12 +24,15 @@ object FSUtils {
     zipStream.close()
   }
 
-  def extractZipFile(fileSystem: FileSystem, zipStream: ZipInputStream, outputDir: Path): Unit = {
+  def extractZipFile(fileSystem: FileSystem, zipStream: ZipInputStream, outputDir: Path,
+                     filterRegex: Option[String] = None): Unit = {
     fileSystem.mkdirs(outputDir)
 
     Stream
       .continually(zipStream.getNextEntry)
       .takeWhile(_ != null)
+      .filter(entry =>
+        filterRegex.isEmpty || entry.getName.matches(filterRegex.get))
       .foreach(entry => {
         val outputStream = fileSystem.create(
           outputDir.resolve(entry.getName))

@@ -1,11 +1,10 @@
 import java.io.{InputStream, OutputStream}
 import java.util.regex.Pattern
-import java.util.zip.{GZIPInputStream, GZIPOutputStream, ZipInputStream}
+import java.util.zip.GZIPInputStream
 
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
-import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.fs.FileSystem
 import org.apache.log4j.LogManager
-import org.xerial.snappy.SnappyHadoopCompatibleOutputStream
 
 
 class Compression(fileSystem: FileSystem) {

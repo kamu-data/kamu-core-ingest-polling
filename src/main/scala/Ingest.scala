@@ -110,7 +110,7 @@ class Ingest(
     val bzip2Stream = new BZip2CompressorInputStream(inputStream)
     val zipStream = new ZipInputStream(bzip2Stream)
 
-    FSUtils.extractZipFile(fileSystem, zipStream, extractedPath)
+    FSUtils.extractZipFile(fileSystem, zipStream, extractedPath, source.subPathRegex)
 
     zipStream.close()
 
@@ -156,8 +156,9 @@ class Ingest(
     var result = df
     for(col <- df.columns) {
       result = result.withColumnRenamed(
-        col,
-        col.replaceAll("[ ,;{}\\(\\)\\n\\t=]", "_"))
+        col, col
+          .replaceAll("[ ,;{}\\(\\)=]", "_")
+          .replaceAll("[\\n\\r\\t]", ""))
     }
     result
   }
