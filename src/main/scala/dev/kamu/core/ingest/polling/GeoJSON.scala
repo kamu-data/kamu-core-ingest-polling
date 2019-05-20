@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import java.io.{InputStream, OutputStream, PrintWriter}
 
 import org.json4s._
@@ -6,7 +8,8 @@ import org.json4s.jackson.JsonMethods._
 object GeoJSON {
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
-  def toMultiLineJSON(inputStream: InputStream, outputStream: OutputStream): Unit = {
+  def toMultiLineJSON(inputStream: InputStream,
+                      outputStream: OutputStream): Unit = {
     val featureCollection = parse(inputStream, true)
     val writer = new PrintWriter(outputStream)
 

@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import java.io._
 import java.net.URI
 
@@ -8,12 +10,13 @@ import org.json4s.JsonAST.{JNull, JString}
 import org.json4s.jackson.Serialization
 import org.json4s.{CustomSerializer, NoTypeHints}
 
-
 class CachingDownloader(fileSystem: FileSystem) {
   private implicit val formats = Serialization.formats(NoTypeHints) + UriSerializer
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def maybeDownload(url: URI, cacheDir: Path, handler: InputStream => Unit): DownloadResult = {
+  def maybeDownload(url: URI,
+                    cacheDir: Path,
+                    handler: InputStream => Unit): DownloadResult = {
     logger.info(s"Requested file: $url")
 
     val storedCacheInfo = getStoredCacheInfo(url, cacheDir)
@@ -36,7 +39,7 @@ class CachingDownloader(fileSystem: FileSystem) {
       if (!downloadResult.cacheInfo.isCacheable)
         logger.warn(
           s"Response for URL $url is uncacheable. " +
-          s"Data will not be updated automatically.")
+            s"Data will not be updated automatically.")
 
       storeCacheInfo(downloadResult.cacheInfo, cacheDir)
     }
@@ -89,12 +92,13 @@ class CachingDownloader(fileSystem: FileSystem) {
   }
 }
 
-
-case object UriSerializer extends CustomSerializer[URI](
-  format => ({
-    case JString(uri) => URI.create(uri)
-    case JNull => null
-  }, {
-    case uri: URI => JString(uri.toString)
-  })
-)
+case object UriSerializer
+    extends CustomSerializer[URI](
+      format =>
+        ({
+          case JString(uri) => URI.create(uri)
+          case JNull        => null
+        }, {
+          case uri: URI => JString(uri.toString)
+        })
+    )

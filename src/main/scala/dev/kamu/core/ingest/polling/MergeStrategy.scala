@@ -1,33 +1,32 @@
+package dev.kamu.core.ingest.polling
+
 import java.sql.Timestamp
 
 import DFUtils._
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.{col, lit, when}
 
-
 object MergeStrategy {
   def apply(conf: MergeStrategyConf): MergeStrategy = {
     conf match {
       case c: Append =>
-        new AppendMergeStrategy(
-          addSystemTime = c.addSystemTime)
+        new AppendMergeStrategy(addSystemTime = c.addSystemTime)
       case c: Ledger =>
         new LedgerMergeStrategy(c.primaryKey)
       case c: Snapshot =>
-        new SnapshotMergeStrategy(
-          pk = c.primaryKey,
-          modInd = c.modificationIndicator)
+        new SnapshotMergeStrategy(pk = c.primaryKey,
+                                  modInd = c.modificationIndicator)
       case _ =>
         throw new NotImplementedError(s"Unsupported strategy: $conf")
     }
   }
 }
 
-
 abstract class MergeStrategy {
-  def merge(prev: Option[DataFrame], curr: DataFrame, systemTime: Timestamp): DataFrame
+  def merge(prev: Option[DataFrame],
+            curr: DataFrame,
+            systemTime: Timestamp): DataFrame
 }
-
 
 /** Append merge strategy.
   *
@@ -37,12 +36,14 @@ abstract class MergeStrategy {
   * @param addSystemTime whether to add system time column to data
   * @param vocab vocabulary of system column names and common values
   */
-class AppendMergeStrategy (
+class AppendMergeStrategy(
   addSystemTime: Boolean = false,
   vocab: Vocabulary = Vocabulary()
 ) extends MergeStrategy {
 
-  override def merge(prev: Option[DataFrame], curr: DataFrame, systemTime: Timestamp): DataFrame = {
+  override def merge(prev: Option[DataFrame],
+                     curr: DataFrame,
+                     systemTime: Timestamp): DataFrame = {
     if (addSystemTime) {
       curr.withColumn(vocab.systemTimeColumn, lit(systemTime))
     } else {
@@ -51,7 +52,6 @@ class AppendMergeStrategy (
   }
 
 }
-
 
 /** Ledger merge strategy.
   *
@@ -70,13 +70,14 @@ class AppendMergeStrategy (
   *
   * @param pk primary key column name
   */
-class LedgerMergeStrategy (
+class LedgerMergeStrategy(
   pk: String,
   vocab: Vocabulary = Vocabulary()
 ) extends MergeStrategy {
 
   override def merge(
-    prevSeries: Option[DataFrame], currSeries: DataFrame,
+    prevSeries: Option[DataFrame],
+    currSeries: DataFrame,
     systemTime: Timestamp
   ): DataFrame = {
     val curr = currSeries
@@ -88,10 +89,12 @@ class LedgerMergeStrategy (
     val combinedColumnNames = (prev.columns ++ curr.columns).distinct.toList
 
     val resultColumns = combinedColumnNames
-      .map(columnName =>
-        curr.getColumn(columnName)
-          .getOrElse(lit(null))
-          .as(columnName))
+      .map(
+        columnName =>
+          curr
+            .getColumn(columnName)
+            .getOrElse(lit(null))
+            .as(columnName))
 
     curr
       .join(prev, curr(pk) === prev(pk), "left_outer")
@@ -100,7 +103,6 @@ class LedgerMergeStrategy (
   }
 
 }
-
 
 /** Snapshot data merge strategy.
   *
@@ -168,7 +170,9 @@ class SnapshotMergeStrategy(
     *   OR curr.${modInd} != prev.${modInd}
     * }}}
     */
-  override def merge(prevSeries: Option[DataFrame], curr: DataFrame, systemTime: Timestamp): DataFrame = {
+  override def merge(prevSeries: Option[DataFrame],
+                     curr: DataFrame,
+                     systemTime: Timestamp): DataFrame = {
     val prev = if (prevSeries.isDefined) {
       TimeSeriesUtils
         .timeSeriesToSnapshot(prevSeries.get, pk)
@@ -205,27 +209,24 @@ class SnapshotMergeStrategy(
       df.getColumn(name).getOrElse(lit(null))
 
     val resultDataColumns = combinedDataColumnNames
-      .map(columnName =>
-        when(
-          col(vocab.observationColumn) === vocab.obsvRemoved,
-          columnOrNull(prev, columnName))
-        .otherwise(columnOrNull(curr, columnName))
-        .as(columnName))
+      .map(
+        columnName =>
+          when(col(vocab.observationColumn) === vocab.obsvRemoved,
+               columnOrNull(prev, columnName))
+            .otherwise(columnOrNull(curr, columnName))
+            .as(columnName))
 
-    val resultColumns = col(vocab.systemTimeColumn) :: col(vocab.observationColumn) :: resultDataColumns
+    val resultColumns = col(vocab.systemTimeColumn) :: col(
+      vocab.observationColumn) :: resultDataColumns
 
     curr
       .join(prev, prev(pk) === curr(pk), "full_outer")
-      .filter(
-        curr(pk).isNull || prev(pk).isNull || changedPredicate)
-      .withColumn(
-        vocab.systemTimeColumn,
-        lit(systemTime))
-      .withColumn(
-        vocab.observationColumn,
-        when(prev(pk).isNull, vocab.obsvAdded)
-          .when(curr(pk).isNull, vocab.obsvRemoved)
-          .otherwise(vocab.obsvChanged))
+      .filter(curr(pk).isNull || prev(pk).isNull || changedPredicate)
+      .withColumn(vocab.systemTimeColumn, lit(systemTime))
+      .withColumn(vocab.observationColumn,
+                  when(prev(pk).isNull, vocab.obsvAdded)
+                    .when(curr(pk).isNull, vocab.obsvRemoved)
+                    .otherwise(vocab.obsvChanged))
       .select(resultColumns: _*)
   }
 }

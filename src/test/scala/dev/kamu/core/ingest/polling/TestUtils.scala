@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
@@ -12,13 +14,13 @@ object TestUtils {
   def ignoreNullableSchema(df: DataFrame): DataFrame = {
     // Coalesce makes spark think the column can be nullable
     df.select(
-      df.columns.map(c =>
-        when(df(c).isNotNull, df(c))
-          .otherwise(lit(null))
-          .as(c)): _*)
+      df.columns.map(
+        c =>
+          when(df(c).isNotNull, df(c))
+            .otherwise(lit(null))
+            .as(c)): _*)
   }
 }
-
 
 trait DataFrameSuiteBaseEx extends DataFrameSuiteBase { self: Suite =>
 
@@ -33,9 +35,13 @@ trait DataFrameSuiteBaseEx extends DataFrameSuiteBase { self: Suite =>
     GeoSparkSQLRegistrator.registerAll(spark)
   }
 
-  def assertDataFrameEquals(expected: DataFrame, actual: DataFrame, ignoreNullable: Boolean): Unit = {
-    val exp = if (ignoreNullable) TestUtils.ignoreNullableSchema(expected) else expected
-    val act = if (ignoreNullable) TestUtils.ignoreNullableSchema(actual) else actual
+  def assertDataFrameEquals(expected: DataFrame,
+                            actual: DataFrame,
+                            ignoreNullable: Boolean): Unit = {
+    val exp =
+      if (ignoreNullable) TestUtils.ignoreNullableSchema(expected) else expected
+    val act =
+      if (ignoreNullable) TestUtils.ignoreNullableSchema(actual) else actual
     super.assertDataFrameEquals(exp, act)
   }
 

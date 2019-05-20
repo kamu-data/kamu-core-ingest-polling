@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import java.sql.Timestamp
 import java.util.zip.ZipInputStream
 
@@ -10,7 +12,6 @@ import org.apache.spark.sql._
 import org.datasyslab.geospark.formatMapper.GeoJsonReader
 import org.datasyslab.geospark.formatMapper.shapefileParser.ShapefileReader
 import org.datasyslab.geosparksql.utils.{Adapter, GeoSparkSQLRegistrator}
-
 
 class Ingest(
   config: AppConf,
@@ -45,28 +46,40 @@ class Ingest(
       val downloadResult = maybeDownload(source, cachePath, downloadPath)
 
       if (!downloadResult.wasUpToDate) {
-        ingest(getSparkSubSession(sparkSession), source, downloadPath, ingestedPath)
+        ingest(getSparkSubSession(sparkSession),
+               source,
+               downloadPath,
+               ingestedPath)
       }
     }
 
     logger.info(s"Finished ingest run")
   }
 
-  def maybeDownload(source: SourceConf, cachePath: Path, downloadPath: Path): DownloadResult = {
-    cachingDownloader.maybeDownload(source.url, cachePath, body => {
-      val extracted = compression.getExtractedStream(source, body)
+  def maybeDownload(source: SourceConf,
+                    cachePath: Path,
+                    downloadPath: Path): DownloadResult = {
+    cachingDownloader.maybeDownload(
+      source.url,
+      cachePath,
+      body => {
+        val extracted = compression.getExtractedStream(source, body)
 
-      if (!fileSystem.exists(downloadPath.getParent))
-        fileSystem.mkdirs(downloadPath.getParent)
+        if (!fileSystem.exists(downloadPath.getParent))
+          fileSystem.mkdirs(downloadPath.getParent)
 
-      val outputStream = fileSystem.create(downloadPath)
-      val compressed = compression.toCompressedStream(outputStream)
+        val outputStream = fileSystem.create(downloadPath)
+        val compressed = compression.toCompressedStream(outputStream)
 
-      processing.process(source, extracted, compressed)
-    })
+        processing.process(source, extracted, compressed)
+      }
+    )
   }
 
-  def ingest(spark: SparkSession, source: SourceConf, filePath: Path, outPath: Path): Unit = {
+  def ingest(spark: SparkSession,
+             source: SourceConf,
+             filePath: Path,
+             outPath: Path): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
 
     val reader = source.format.toLowerCase match {
@@ -90,7 +103,9 @@ class Ingest(
       .parquet(outPath.toString)
   }
 
-  def readGeneric(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
+  def readGeneric(spark: SparkSession,
+                  source: SourceConf,
+                  filePath: Path): DataFrame = {
     val reader = spark.read
 
     if (source.schema.nonEmpty)
@@ -103,19 +118,24 @@ class Ingest(
   }
 
   // TODO: This is inefficient
-  def readShapefile(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
+  def readShapefile(spark: SparkSession,
+                    source: SourceConf,
+                    filePath: Path): DataFrame = {
     val extractedPath = filePath.getParent.resolve("shapefile")
 
     val inputStream = fileSystem.open(filePath)
     val bzip2Stream = new BZip2CompressorInputStream(inputStream)
     val zipStream = new ZipInputStream(bzip2Stream)
 
-    FSUtils.extractZipFile(fileSystem, zipStream, extractedPath, source.subPathRegex)
+    FSUtils.extractZipFile(fileSystem,
+                           zipStream,
+                           extractedPath,
+                           source.subPathRegex)
 
     zipStream.close()
 
-    val rdd = ShapefileReader.readToGeometryRDD(
-      spark.sparkContext, extractedPath.toString)
+    val rdd = ShapefileReader.readToGeometryRDD(spark.sparkContext,
+                                                extractedPath.toString)
 
     Adapter
       .toDf(rdd, spark)
@@ -126,12 +146,13 @@ class Ingest(
   }
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
-  def readGeoJSON(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
-    val rdd = GeoJsonReader.readToGeometryRDD(
-      spark.sparkContext,
-      filePath.toString,
-      false,
-      false)
+  def readGeoJSON(spark: SparkSession,
+                  source: SourceConf,
+                  filePath: Path): DataFrame = {
+    val rdd = GeoJsonReader.readToGeometryRDD(spark.sparkContext,
+                                              filePath.toString,
+                                              false,
+                                              false)
 
     Adapter
       .toDf(rdd, spark)
@@ -142,23 +163,22 @@ class Ingest(
   }
 
   // TODO: Replace with generic options to skip N lines
-  def readWorldbankCSV(spark: SparkSession, source: SourceConf, filePath: Path): DataFrame = {
-    readGeneric(
-      spark,
-      source.copy(format="csv"),
-      filePath)
+  def readWorldbankCSV(spark: SparkSession,
+                       source: SourceConf,
+                       filePath: Path): DataFrame = {
+    readGeneric(spark, source.copy(format = "csv"), filePath)
   }
 
   def normalizeSchema(source: SourceConf)(df: DataFrame): DataFrame = {
-    if(source.schema.nonEmpty)
+    if (source.schema.nonEmpty)
       return df
 
     var result = df
-    for(col <- df.columns) {
-      result = result.withColumnRenamed(
-        col, col
-          .replaceAll("[ ,;{}\\(\\)=]", "_")
-          .replaceAll("[\\n\\r\\t]", ""))
+    for (col <- df.columns) {
+      result = result.withColumnRenamed(col,
+                                        col
+                                          .replaceAll("[ ,;{}\\(\\)=]", "_")
+                                          .replaceAll("[\\n\\r\\t]", ""))
     }
     result
   }
@@ -183,14 +203,16 @@ class Ingest(
       "Pre-processing steps do not contain output query")
   }
 
-  def mergeWithExisting(source: SourceConf, outPath: Path)(curr: DataFrame): DataFrame = {
+  def mergeWithExisting(source: SourceConf, outPath: Path)(
+    curr: DataFrame): DataFrame = {
     val spark = curr.sparkSession
     val mergeStrategy = MergeStrategy(source.mergeStrategy)
 
-    val prev = if (fileSystem.exists(outPath))
-      Some(spark.read.parquet(outPath.toString))
-    else
-      None
+    val prev =
+      if (fileSystem.exists(outPath))
+        Some(spark.read.parquet(outPath.toString))
+      else
+        None
 
     mergeStrategy.merge(prev, curr, getSystemTime())
   }

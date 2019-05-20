@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.functions.{col, last, lit}
 import DFUtils._
@@ -5,22 +7,18 @@ import DFUtils._
 case class Vocabulary(
   systemTimeColumn: String = "systemTime",
   lastUpdatedTimeSystemColumn: String = "lastUpdatedSys",
-
   observationColumn: String = "observed",
   obsvAdded: String = "added",
   obsvChanged: String = "changed",
   obsvRemoved: String = "removed"
 )
 
-
 object TimeSeriesUtils {
 
   def empty(proto: DataFrame): DataFrame = {
     val spark = proto.sparkSession
 
-    spark.createDataFrame(
-      spark.sparkContext.emptyRDD[Row],
-      proto.schema)
+    spark.createDataFrame(spark.sparkContext.emptyRDD[Row], proto.schema)
   }
 
   /** Creates a snapshot from time series data.
@@ -50,12 +48,12 @@ object TimeSeriesUtils {
 
     val resultColumns = col(pkColumn) :: (
       dataColumns
-      .filter(_ != vocab.observationColumn)
-      .filter(_ != vocab.systemTimeColumn)
-      .map(c => col(aggAlias(c)).as(c))
-      :+
-      col(aggAlias(vocab.systemTimeColumn))
-      .as(vocab.lastUpdatedTimeSystemColumn)
+        .filter(_ != vocab.observationColumn)
+        .filter(_ != vocab.systemTimeColumn)
+        .map(c => col(aggAlias(c)).as(c))
+        :+
+          col(aggAlias(vocab.systemTimeColumn))
+            .as(vocab.lastUpdatedTimeSystemColumn)
     )
 
     series

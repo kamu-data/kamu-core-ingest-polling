@@ -1,10 +1,13 @@
+package dev.kamu.core.ingest.polling
+
 import org.apache.spark.sql.{Column, DataFrame, RelationalGroupedDataset}
 
 object DFUtils {
 
   implicit class DataFrameEx(val df: DataFrame) {
 
-    def maybeTransform(condition: Boolean, tr: DataFrame => DataFrame): DataFrame = {
+    def maybeTransform(condition: Boolean,
+                       tr: DataFrame => DataFrame): DataFrame = {
       if (condition)
         df.transform(tr)
       else

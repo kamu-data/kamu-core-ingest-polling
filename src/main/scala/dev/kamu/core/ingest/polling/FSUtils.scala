@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import java.util.zip.ZipInputStream
 
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -14,8 +16,9 @@ object FSUtils {
     }
   }
 
-
-  def extractZipFile(fileSystem: FileSystem, filePath: Path, outputDir: Path): Unit = {
+  def extractZipFile(fileSystem: FileSystem,
+                     filePath: Path,
+                     outputDir: Path): Unit = {
     val inputStream = fileSystem.open(filePath)
     val zipStream = new ZipInputStream(inputStream)
 
@@ -24,7 +27,9 @@ object FSUtils {
     zipStream.close()
   }
 
-  def extractZipFile(fileSystem: FileSystem, zipStream: ZipInputStream, outputDir: Path,
+  def extractZipFile(fileSystem: FileSystem,
+                     zipStream: ZipInputStream,
+                     outputDir: Path,
                      filterRegex: Option[String] = None): Unit = {
     fileSystem.mkdirs(outputDir)
 
@@ -34,8 +39,7 @@ object FSUtils {
       .filter(entry =>
         filterRegex.isEmpty || entry.getName.matches(filterRegex.get))
       .foreach(entry => {
-        val outputStream = fileSystem.create(
-          outputDir.resolve(entry.getName))
+        val outputStream = fileSystem.create(outputDir.resolve(entry.getName))
 
         val buffer = new Array[Byte](1024)
 

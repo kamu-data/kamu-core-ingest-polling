@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import java.io.{InputStream, OutputStream, PrintWriter}
 
 /** Removes the poorly formatted header

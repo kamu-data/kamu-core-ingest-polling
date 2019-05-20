@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import java.io.PrintWriter
 import java.sql.Timestamp
 import java.util.UUID
@@ -9,7 +11,6 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.functions
 import org.scalatest.FunSuite
 
-
 class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
   import spark.implicits._
   protected override val enableHiveSupport = false
@@ -20,7 +21,8 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
   def ts(milis: Long) = new Timestamp(milis)
 
   def withTempDir(work: Path => Unit): Unit = {
-    val testTempDir = sysTempDir.resolve("kamu-test-" + UUID.randomUUID.toString)
+    val testTempDir =
+      sysTempDir.resolve("kamu-test-" + UUID.randomUUID.toString)
     fileSystem.mkdirs(testTempDir)
 
     try {
@@ -54,21 +56,20 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
       downloadDir = tempDir.resolve("poll"),
       checkpointDir = tempDir.resolve("checkpoint"),
       dataDir = tempDir.resolve("root"),
-      sources = Vector(SourceConf(
-        id = sourceID,
-        url = inputPath.toUri,
-        format = "geojson",
-        mergeStrategy = Snapshot(
-          primaryKey = "id",
-          modificationIndicator = None)
-      ))
+      sources = Vector(
+        SourceConf(
+          id = sourceID,
+          url = inputPath.toUri,
+          format = "geojson",
+          mergeStrategy =
+            Snapshot(primaryKey = "id", modificationIndicator = None)
+        ))
     ).withDefaults()
 
-    val ingest = new Ingest(
-      config = conf,
-      hadoopConf = new hadoop.conf.Configuration(),
-      getSparkSession = () => spark,
-      getSystemTime = () => systemTime)
+    val ingest = new Ingest(config = conf,
+                            hadoopConf = new hadoop.conf.Configuration(),
+                            getSparkSession = () => spark,
+                            getSystemTime = () => systemTime)
 
     ingest.pollAndIngest()
 
@@ -125,10 +126,23 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
         |  ]
         |}""".stripMargin
 
-    val expected = sc.parallelize(Seq(
-      (ts(0), "added", "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))", "0", "00101", "A"),
-      (ts(0), "added", "POLYGON ((0 0, 20 0, 20 20, 0 20, 0 0))", "1", "00202", "B")
-    )).toDF("systemTime", "observed", "geometry", "id", "zipcode", "name")
+    val expected = sc
+      .parallelize(
+        Seq(
+          (ts(0),
+           "added",
+           "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))",
+           "0",
+           "00101",
+           "A"),
+          (ts(0),
+           "added",
+           "POLYGON ((0 0, 20 0, 20 20, 0 20, 0 0))",
+           "1",
+           "00202",
+           "B")
+        ))
+      .toDF("systemTime", "observed", "geometry", "id", "zipcode", "name")
       .withColumn(
         "geometry",
         functions.callUDF("ST_GeomFromWKT", functions.col("geometry"))

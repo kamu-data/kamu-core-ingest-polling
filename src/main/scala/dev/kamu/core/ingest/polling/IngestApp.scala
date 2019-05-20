@@ -1,3 +1,5 @@
+package dev.kamu.core.ingest.polling
+
 import java.sql.Timestamp
 
 import org.apache.log4j.LogManager
@@ -6,7 +8,6 @@ import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.SparkSession
 import org.datasyslab.geospark.serde.GeoSparkKryoRegistrator
-
 
 object IngestApp {
   def main(args: Array[String]) {
