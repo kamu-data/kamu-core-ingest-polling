@@ -5,6 +5,7 @@ import java.sql.Timestamp
 import java.util.UUID
 
 import FSUtils._
+import dev.kamu.core.manifests.{DataSourcePolling, Snapshot}
 import org.apache.hadoop
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -57,7 +58,7 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
       checkpointDir = tempDir.resolve("checkpoint"),
       dataDir = tempDir.resolve("root"),
       sources = Vector(
-        SourceConf(
+        DataSourcePolling(
           id = sourceID,
           url = inputPath.toUri,
           format = "geojson",

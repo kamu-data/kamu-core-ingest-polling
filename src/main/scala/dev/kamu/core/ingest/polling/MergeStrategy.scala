@@ -3,12 +3,19 @@ package dev.kamu.core.ingest.polling
 import java.sql.Timestamp
 
 import DFUtils._
+import dev.kamu.core.manifests.{
+  MergeStrategyKind,
+  Append,
+  Ledger,
+  Snapshot,
+  DatasetVocabulary
+}
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.{col, lit, when}
 
 object MergeStrategy {
-  def apply(conf: MergeStrategyConf): MergeStrategy = {
-    conf match {
+  def apply(kind: MergeStrategyKind): MergeStrategy = {
+    kind match {
       case c: Append =>
         new AppendMergeStrategy(addSystemTime = c.addSystemTime)
       case c: Ledger =>
@@ -17,7 +24,7 @@ object MergeStrategy {
         new SnapshotMergeStrategy(pk = c.primaryKey,
                                   modInd = c.modificationIndicator)
       case _ =>
-        throw new NotImplementedError(s"Unsupported strategy: $conf")
+        throw new NotImplementedError(s"Unsupported strategy: $kind")
     }
   }
 }
@@ -38,7 +45,7 @@ abstract class MergeStrategy {
   */
 class AppendMergeStrategy(
   addSystemTime: Boolean = false,
-  vocab: Vocabulary = Vocabulary()
+  vocab: DatasetVocabulary = DatasetVocabulary()
 ) extends MergeStrategy {
 
   override def merge(prev: Option[DataFrame],
@@ -72,7 +79,7 @@ class AppendMergeStrategy(
   */
 class LedgerMergeStrategy(
   pk: String,
-  vocab: Vocabulary = Vocabulary()
+  vocab: DatasetVocabulary = DatasetVocabulary()
 ) extends MergeStrategy {
 
   override def merge(
@@ -138,7 +145,7 @@ class LedgerMergeStrategy(
 class SnapshotMergeStrategy(
   pk: String,
   modInd: Option[String],
-  vocab: Vocabulary = Vocabulary()
+  vocab: DatasetVocabulary = DatasetVocabulary()
 ) extends MergeStrategy {
 
   /** Performs snapshot merge.

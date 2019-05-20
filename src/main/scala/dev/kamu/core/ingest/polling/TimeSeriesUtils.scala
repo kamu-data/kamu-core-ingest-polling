@@ -1,17 +1,9 @@
 package dev.kamu.core.ingest.polling
 
+import dev.kamu.core.manifests.DatasetVocabulary
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.functions.{col, last, lit}
 import DFUtils._
-
-case class Vocabulary(
-  systemTimeColumn: String = "systemTime",
-  lastUpdatedTimeSystemColumn: String = "lastUpdatedSys",
-  observationColumn: String = "observed",
-  obsvAdded: String = "added",
-  obsvChanged: String = "changed",
-  obsvRemoved: String = "removed"
-)
 
 object TimeSeriesUtils {
 
@@ -35,7 +27,7 @@ object TimeSeriesUtils {
   def timeSeriesToSnapshot(
     series: DataFrame,
     pkColumn: String,
-    vocab: Vocabulary = Vocabulary()
+    vocab: DatasetVocabulary = DatasetVocabulary()
   ): DataFrame = {
     def aggAlias(c: String) = "__" + c
 

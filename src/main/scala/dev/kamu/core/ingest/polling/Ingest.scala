@@ -5,6 +5,7 @@ import java.util.zip.ZipInputStream
 
 import DFUtils._
 import FSUtils._
+import dev.kamu.core.manifests.DataSourcePolling
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
@@ -56,7 +57,7 @@ class Ingest(
     logger.info(s"Finished ingest run")
   }
 
-  def maybeDownload(source: SourceConf,
+  def maybeDownload(source: DataSourcePolling,
                     cachePath: Path,
                     downloadPath: Path): DownloadResult = {
     cachingDownloader.maybeDownload(
@@ -77,7 +78,7 @@ class Ingest(
   }
 
   def ingest(spark: SparkSession,
-             source: SourceConf,
+             source: DataSourcePolling,
              filePath: Path,
              outPath: Path): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
@@ -104,7 +105,7 @@ class Ingest(
   }
 
   def readGeneric(spark: SparkSession,
-                  source: SourceConf,
+                  source: DataSourcePolling,
                   filePath: Path): DataFrame = {
     val reader = spark.read
 
@@ -119,7 +120,7 @@ class Ingest(
 
   // TODO: This is inefficient
   def readShapefile(spark: SparkSession,
-                    source: SourceConf,
+                    source: DataSourcePolling,
                     filePath: Path): DataFrame = {
     val extractedPath = filePath.getParent.resolve("shapefile")
 
@@ -147,7 +148,7 @@ class Ingest(
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
   def readGeoJSON(spark: SparkSession,
-                  source: SourceConf,
+                  source: DataSourcePolling,
                   filePath: Path): DataFrame = {
     val rdd = GeoJsonReader.readToGeometryRDD(spark.sparkContext,
                                               filePath.toString,
@@ -164,12 +165,12 @@ class Ingest(
 
   // TODO: Replace with generic options to skip N lines
   def readWorldbankCSV(spark: SparkSession,
-                       source: SourceConf,
+                       source: DataSourcePolling,
                        filePath: Path): DataFrame = {
     readGeneric(spark, source.copy(format = "csv"), filePath)
   }
 
-  def normalizeSchema(source: SourceConf)(df: DataFrame): DataFrame = {
+  def normalizeSchema(source: DataSourcePolling)(df: DataFrame): DataFrame = {
     if (source.schema.nonEmpty)
       return df
 
@@ -183,7 +184,7 @@ class Ingest(
     result
   }
 
-  def preprocess(source: SourceConf)(df: DataFrame): DataFrame = {
+  def preprocess(source: DataSourcePolling)(df: DataFrame): DataFrame = {
     if (source.preprocess.isEmpty)
       return df
 
@@ -203,7 +204,7 @@ class Ingest(
       "Pre-processing steps do not contain output query")
   }
 
-  def mergeWithExisting(source: SourceConf, outPath: Path)(
+  def mergeWithExisting(source: DataSourcePolling, outPath: Path)(
     curr: DataFrame): DataFrame = {
     val spark = curr.sparkSession
     val mergeStrategy = MergeStrategy(source.mergeStrategy)

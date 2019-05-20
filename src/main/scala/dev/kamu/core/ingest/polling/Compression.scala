@@ -4,6 +4,7 @@ import java.io.{InputStream, OutputStream}
 import java.util.regex.Pattern
 import java.util.zip.GZIPInputStream
 
+import dev.kamu.core.manifests.DataSourcePolling
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
 import org.apache.hadoop.fs.FileSystem
 import org.apache.log4j.LogManager
@@ -11,7 +12,7 @@ import org.apache.log4j.LogManager
 class Compression(fileSystem: FileSystem) {
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def getExtractedStream(source: SourceConf,
+  def getExtractedStream(source: DataSourcePolling,
                          inputStream: InputStream): InputStream = {
     source.compression.map(_.toLowerCase) match {
       case None =>

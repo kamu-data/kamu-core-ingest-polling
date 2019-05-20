@@ -2,118 +2,24 @@ package dev.kamu.core.ingest.polling
 
 import java.net.URI
 
+import dev.kamu.core.manifests.DataSourcePolling
 import org.apache.hadoop.fs.Path
 import pureconfig.generic.ProductHint
 import pureconfig.module.yaml.loadYamlOrThrow
 import pureconfig.{CamelCase, ConfigFieldMapping, ConfigReader}
 
-///////////////////////////////////////////////////////////////////////////////
-// Source Config
-///////////////////////////////////////////////////////////////////////////////
-
-object SourceConf {
-  val DEFAULT_READER_OPTIONS: Map[String, String] = Map(
-    "mode" -> "FAILFAST"
-  )
-}
-
-case class SourceConf(
-  id: String,
-  url: URI,
-  compression: Option[String] = None,
-  /** Path to a data file within an archive */
-  subPath: Option[Path] = None,
-  /** Regex for finding desired data file within an archive */
-  subPathRegex: Option[String] = None,
-  format: String,
-  /** Options to pass into the [[org.apache.spark.sql.DataFrameReader]]
-    *
-    * Options in config will be merged with [[SourceConf.DEFAULT_READER_OPTIONS]].
-    */
-  readerOptions: Map[String, String] = Map.empty,
-  /** A DDL-formatted schema that can be used to cast values into
-    * more appropriate data types.
-    */
-  schema: Vector[String] = Vector.empty,
-  /** Pre-processing steps to shape the data */
-  preprocess: Vector[StepConf] = Vector.empty,
-  /** One of the supported merge strategies (see [[MergeStrategyConf]]) */
-  mergeStrategy: MergeStrategyConf = Append(),
-  /** Collapse partitions of the result to specified number
-    *
-    * If zero - the step will be skipped
-    */
-  coalesce: Int = 1
-)
-
-case class StepConf(
-  view: String,
-  query: String
-)
-
-///////////////////////////////////////////////////////////////////////////////
-// Merge Strategies
-///////////////////////////////////////////////////////////////////////////////
-
-sealed trait MergeStrategyConf
-
-/** Append merge strategy.
-  *
-  * See [[AppendMergeStrategy]] class.
-  *
-  * @param addSystemTime whether to add a system time column to data
-  */
-case class Append(
-  addSystemTime: Boolean = false
-) extends MergeStrategyConf
-
-/** Ledger merge strategy.
-  *
-  * See [[LedgerMergeStrategy]] class.
-  *
-  * @param primaryKey name of the column that uniquely identifies the
-  *                   record throughout its lifetime
-  */
-case class Ledger(primaryKey: String) extends MergeStrategyConf
-
-/** Snapshot merge strategy.
-  *
-  * See [[SnapshotMergeStrategy]] class.
-  *
-  * @param primaryKey name of the column that uniquely identifies the
-  *                   record throughout its lifetime
-  * @param modificationIndicator name of the column that always has a
-  *                              new value when row data changes, for
-  *                              example this can be a modification
-  *                              timestamp, an incremental version, or a data
-  *                              hash. If not specified all data columns will
-  *                              be compared one by one.
-  */
-case class Snapshot(
-  primaryKey: String,
-  modificationIndicator: Option[String]
-) extends MergeStrategyConf
-
-///////////////////////////////////////////////////////////////////////////////
-// Application config
-///////////////////////////////////////////////////////////////////////////////
-
 case class AppConf(
   /** Directory to store downloaded data in before processing */
   downloadDir: Path,
-  /** Directory to store cache information not to re-download
-    * data if it didn't change
-    */
+  /** Directory to store cache information in */
   checkpointDir: Path,
   /** Root data set directory for ingested raw data */
   dataDir: Path,
   /** List of sources to poll */
-  sources: Vector[SourceConf] = Vector.empty
+  sources: Vector[DataSourcePolling] = Vector.empty
 ) {
   def withDefaults(): AppConf = {
-    copy(sources = sources.map(source =>
-      source.copy(
-        readerOptions = SourceConf.DEFAULT_READER_OPTIONS ++ source.readerOptions)))
+    copy(sources = sources.map(source => source.withDefaults()))
   }
 }
 

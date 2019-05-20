@@ -2,13 +2,14 @@ package dev.kamu.core.ingest.polling
 
 import java.io.{InputStream, OutputStream}
 
+import dev.kamu.core.manifests.DataSourcePolling
 import org.apache.commons.io.IOUtils
 import org.apache.log4j.LogManager
 
 class Processing {
   val logger = LogManager.getLogger(getClass.getName)
 
-  def process(source: SourceConf,
+  def process(source: DataSourcePolling,
               inputStream: InputStream,
               outputStream: OutputStream): Unit = {
     source.format.toLowerCase match {
