@@ -2,20 +2,14 @@ package dev.kamu.core.ingest.polling
 
 import java.net.URI
 
-import dev.kamu.core.manifests.DataSourcePolling
+import dev.kamu.core.manifests.{DataSourcePolling, RepositoryVolumeMap}
 import org.apache.hadoop.fs.Path
 import pureconfig.generic.ProductHint
 import pureconfig.module.yaml.loadYamlOrThrow
 import pureconfig.{CamelCase, ConfigFieldMapping, ConfigReader}
 
 case class AppConf(
-  /** Directory to store downloaded data in before processing */
-  downloadDir: Path,
-  /** Directory to store cache information in */
-  checkpointDir: Path,
-  /** Root data set directory for ingested raw data */
-  dataDir: Path,
-  /** List of sources to poll */
+  repository: RepositoryVolumeMap,
   sources: Vector[DataSourcePolling] = Vector.empty
 ) {
   def withDefaults(): AppConf = {
@@ -26,8 +20,8 @@ case class AppConf(
 object AppConf {
   import pureconfig.generic.auto._
 
-  val configFileName = "poll-config.yaml"
-  val pollCacheFileName = "poll-cache.json"
+  val repositoryConfigFile = "repositoryVolumeMap.yaml"
+  val dataSourceConfigFile = "dataSourcePolling.yaml"
 
   implicit val pathReader = ConfigReader[String]
     .map(s => new Path(URI.create(s)))
@@ -38,16 +32,27 @@ object AppConf {
                    allowUnknownKeys = false)
 
   def load(): AppConf = {
+    val repository = loadConfig[RepositoryVolumeMap](repositoryConfigFile)
+    val source = loadConfig[DataSourcePolling](dataSourceConfigFile)
+
+    val appConfig = AppConf(
+      repository = repository,
+      sources = Vector(source)
+    )
+
+    appConfig.withDefaults()
+  }
+
+  def loadConfig[T](configFileName: String): T = {
     val configStream =
       getClass.getClassLoader.getResourceAsStream(configFileName)
+
     if (configStream == null)
       throw new RuntimeException(
         s"Unable to locate $configFileName on classpath")
 
     val configString = scala.io.Source.fromInputStream(configStream).mkString
-    val config = loadYamlOrThrow[AppConf](configString)
-
-    config.withDefaults()
+    loadYamlOrThrow[T](configString)
   }
 
 }
