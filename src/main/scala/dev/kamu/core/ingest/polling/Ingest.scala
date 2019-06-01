@@ -35,31 +35,35 @@ class Ingest(
     for (source <- config.sources) {
       logger.info(s"Processing source: ${source.id}")
 
-      val downloadPath = config.downloadDir
+      val downloadPath = config.repository.downloadDir
         .resolve(source.id)
         .resolve(s"data.${compression.fileExtension}")
 
-      val cachePath = config.checkpointDir
+      val cachePath = config.repository.checkpointDir
         .resolve(source.id)
 
-      val ingestedPath = config.dataDir.resolve(source.id)
+      val ingestedPath = config.repository.dataDir.resolve(source.id)
 
       val downloadResult = maybeDownload(source, cachePath, downloadPath)
 
       if (!downloadResult.wasUpToDate) {
-        ingest(getSparkSubSession(sparkSession),
-               source,
-               downloadPath,
-               ingestedPath)
+        ingest(
+          getSparkSubSession(sparkSession),
+          source,
+          downloadPath,
+          ingestedPath
+        )
       }
     }
 
     logger.info(s"Finished ingest run")
   }
 
-  def maybeDownload(source: DataSourcePolling,
-                    cachePath: Path,
-                    downloadPath: Path): DownloadResult = {
+  def maybeDownload(
+    source: DataSourcePolling,
+    cachePath: Path,
+    downloadPath: Path
+  ): DownloadResult = {
     cachingDownloader.maybeDownload(
       source.url,
       cachePath,
@@ -77,10 +81,12 @@ class Ingest(
     )
   }
 
-  def ingest(spark: SparkSession,
-             source: DataSourcePolling,
-             filePath: Path,
-             outPath: Path): Unit = {
+  def ingest(
+    spark: SparkSession,
+    source: DataSourcePolling,
+    filePath: Path,
+    outPath: Path
+  ): Unit = {
     logger.info(s"Ingesting the data: in=$filePath, out=$outPath")
 
     val reader = source.format.toLowerCase match {
@@ -104,9 +110,11 @@ class Ingest(
       .parquet(outPath.toString)
   }
 
-  def readGeneric(spark: SparkSession,
-                  source: DataSourcePolling,
-                  filePath: Path): DataFrame = {
+  def readGeneric(
+    spark: SparkSession,
+    source: DataSourcePolling,
+    filePath: Path
+  ): DataFrame = {
     val reader = spark.read
 
     if (source.schema.nonEmpty)
@@ -119,24 +127,30 @@ class Ingest(
   }
 
   // TODO: This is inefficient
-  def readShapefile(spark: SparkSession,
-                    source: DataSourcePolling,
-                    filePath: Path): DataFrame = {
+  def readShapefile(
+    spark: SparkSession,
+    source: DataSourcePolling,
+    filePath: Path
+  ): DataFrame = {
     val extractedPath = filePath.getParent.resolve("shapefile")
 
     val inputStream = fileSystem.open(filePath)
     val bzip2Stream = new BZip2CompressorInputStream(inputStream)
     val zipStream = new ZipInputStream(bzip2Stream)
 
-    FSUtils.extractZipFile(fileSystem,
-                           zipStream,
-                           extractedPath,
-                           source.subPathRegex)
+    FSUtils.extractZipFile(
+      fileSystem,
+      zipStream,
+      extractedPath,
+      source.subPathRegex
+    )
 
     zipStream.close()
 
-    val rdd = ShapefileReader.readToGeometryRDD(spark.sparkContext,
-                                                extractedPath.toString)
+    val rdd = ShapefileReader.readToGeometryRDD(
+      spark.sparkContext,
+      extractedPath.toString
+    )
 
     Adapter
       .toDf(rdd, spark)
@@ -147,13 +161,17 @@ class Ingest(
   }
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
-  def readGeoJSON(spark: SparkSession,
-                  source: DataSourcePolling,
-                  filePath: Path): DataFrame = {
-    val rdd = GeoJsonReader.readToGeometryRDD(spark.sparkContext,
-                                              filePath.toString,
-                                              false,
-                                              false)
+  def readGeoJSON(
+    spark: SparkSession,
+    source: DataSourcePolling,
+    filePath: Path
+  ): DataFrame = {
+    val rdd = GeoJsonReader.readToGeometryRDD(
+      spark.sparkContext,
+      filePath.toString,
+      false,
+      false
+    )
 
     Adapter
       .toDf(rdd, spark)
@@ -164,9 +182,11 @@ class Ingest(
   }
 
   // TODO: Replace with generic options to skip N lines
-  def readWorldbankCSV(spark: SparkSession,
-                       source: DataSourcePolling,
-                       filePath: Path): DataFrame = {
+  def readWorldbankCSV(
+    spark: SparkSession,
+    source: DataSourcePolling,
+    filePath: Path
+  ): DataFrame = {
     readGeneric(spark, source.copy(format = "csv"), filePath)
   }
 
@@ -176,10 +196,12 @@ class Ingest(
 
     var result = df
     for (col <- df.columns) {
-      result = result.withColumnRenamed(col,
-                                        col
-                                          .replaceAll("[ ,;{}\\(\\)=]", "_")
-                                          .replaceAll("[\\n\\r\\t]", ""))
+      result = result.withColumnRenamed(
+        col,
+        col
+          .replaceAll("[ ,;{}\\(\\)=]", "_")
+          .replaceAll("[\\n\\r\\t]", "")
+      )
     }
     result
   }
@@ -201,11 +223,13 @@ class Ingest(
     }
 
     throw new RuntimeException(
-      "Pre-processing steps do not contain output query")
+      "Pre-processing steps do not contain output query"
+    )
   }
 
   def mergeWithExisting(source: DataSourcePolling, outPath: Path)(
-    curr: DataFrame): DataFrame = {
+    curr: DataFrame
+  ): DataFrame = {
     val spark = curr.sparkSession
     val mergeStrategy = MergeStrategy(source.mergeStrategy)
 
