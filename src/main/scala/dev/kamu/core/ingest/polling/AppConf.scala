@@ -1,14 +1,8 @@
 package dev.kamu.core.ingest.polling
 
-import java.net.URI
+import java.io.InputStream
 
 import dev.kamu.core.manifests.{DataSourcePolling, RepositoryVolumeMap}
-import org.apache.hadoop.fs.Path
-import pureconfig.generic.ProductHint
-import pureconfig.module.yaml.loadYamlOrThrow
-import pureconfig.{CamelCase, ConfigFieldMapping, ConfigReader, Derivation}
-
-import scala.reflect.ClassTag
 
 case class AppConf(
   repository: RepositoryVolumeMap,
@@ -28,31 +22,7 @@ object AppConf {
   val repositoryConfigFile = "repositoryVolumeMap.yaml"
   val dataSourceConfigFile = "dataSourcePolling.yaml"
 
-  implicit val pathReader = ConfigReader[String]
-    .map(s => new Path(URI.create(s)))
-
-  implicit def hint[T]: ProductHint[T] =
-    ProductHint[T](
-      ConfigFieldMapping(CamelCase, CamelCase),
-      useDefaultArgs = true,
-      allowUnknownKeys = false
-    )
-
-  def load(): AppConf = {
-    val repository = loadConfig[RepositoryVolumeMap](repositoryConfigFile)
-    val source = loadConfig[DataSourcePolling](dataSourceConfigFile)
-
-    val appConfig = AppConf(
-      repository = repository,
-      sources = Vector(source)
-    )
-
-    appConfig.withDefaults()
-  }
-
-  def loadConfig[T: ClassTag](
-    configFileName: String
-  )(implicit reader: Derivation[ConfigReader[T]]): T = {
+  private def getConfigFromResources(configFileName: String): InputStream = {
     val configStream =
       getClass.getClassLoader.getResourceAsStream(configFileName)
 
@@ -61,8 +31,23 @@ object AppConf {
         s"Unable to locate $configFileName on classpath"
       )
 
-    val configString = scala.io.Source.fromInputStream(configStream).mkString
-    loadYamlOrThrow[T](configString)
+    configStream
   }
 
+  def load(): AppConf = {
+    val source = DataSourcePolling
+      .loadManifest(getConfigFromResources(dataSourceConfigFile))
+      .content
+
+    val repository = RepositoryVolumeMap
+      .loadManifest(getConfigFromResources(repositoryConfigFile))
+      .content
+
+    val appConfig = AppConf(
+      repository = repository,
+      sources = Vector(source)
+    )
+
+    appConfig.withDefaults()
+  }
 }
