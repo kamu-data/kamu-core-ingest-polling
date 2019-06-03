@@ -14,9 +14,11 @@ class CachingDownloader(fileSystem: FileSystem) {
   private implicit val formats = Serialization.formats(NoTypeHints) + UriSerializer
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def maybeDownload(url: URI,
-                    cacheDir: Path,
-                    handler: InputStream => Unit): DownloadResult = {
+  def maybeDownload(
+    url: URI,
+    cacheDir: Path,
+    handler: InputStream => Unit
+  ): DownloadResult = {
     logger.info(s"Requested file: $url")
 
     val storedCacheInfo = getStoredCacheInfo(url, cacheDir)
@@ -39,7 +41,8 @@ class CachingDownloader(fileSystem: FileSystem) {
       if (!downloadResult.cacheInfo.isCacheable)
         logger.warn(
           s"Response for URL $url is uncacheable. " +
-            s"Data will not be updated automatically.")
+            s"Data will not be updated automatically."
+        )
 
       storeCacheInfo(downloadResult.cacheInfo, cacheDir)
     }
@@ -51,6 +54,8 @@ class CachingDownloader(fileSystem: FileSystem) {
     url.getScheme match {
       case "http" | "https" =>
         new HTTPCacheableSource()
+      case "ftp" =>
+        new FTPCacheableSource()
       case "gs" =>
         new FileSystemCacheableSource(fileSystem)
       case "hdfs" | null =>

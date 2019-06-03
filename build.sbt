@@ -17,6 +17,7 @@ lazy val kamuCoreIngestPolling = (project in file("."))
       "com.github.pureconfig" %% "pureconfig-yaml" % "0.10.2",
       // HTTP Utils
       "org.scalaj" %% "scalaj-http" % "2.4.1",
+      "commons-net" % "commons-net" % "3.6",
       // Serialization
       "org.json4s" %% "json4s-jackson" % "3.5.3",
       // Spark
