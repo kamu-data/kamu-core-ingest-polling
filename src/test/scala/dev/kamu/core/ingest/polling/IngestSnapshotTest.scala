@@ -5,7 +5,11 @@ import java.sql.Timestamp
 import java.util.UUID
 
 import FSUtils._
-import dev.kamu.core.manifests.{DataSourcePolling, Snapshot}
+import dev.kamu.core.manifests.{
+  DataSourcePolling,
+  RepositoryVolumeMap,
+  Snapshot
+}
 import org.apache.hadoop
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -54,9 +58,11 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     writeFile(inputPath, inputData)
 
     val conf = AppConf(
-      downloadDir = tempDir.resolve("poll"),
-      checkpointDir = tempDir.resolve("checkpoint"),
-      dataDir = tempDir.resolve("root"),
+      repository = RepositoryVolumeMap(
+        downloadDir = tempDir.resolve("poll"),
+        checkpointDir = tempDir.resolve("checkpoint"),
+        dataDir = tempDir.resolve("root")
+      ),
       sources = Vector(
         DataSourcePolling(
           id = sourceID,
@@ -65,17 +71,20 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           schema = inputSchema,
           mergeStrategy =
             Snapshot(primaryKey = "id", modificationIndicator = Some("version"))
-        ))
+        )
+      )
     ).withDefaults()
 
-    val ingest = new Ingest(config = conf,
-                            hadoopConf = new hadoop.conf.Configuration(),
-                            getSparkSession = () => spark,
-                            getSystemTime = () => systemTime)
+    val ingest = new Ingest(
+      config = conf,
+      hadoopConf = new hadoop.conf.Configuration(),
+      getSparkSession = () => spark,
+      getSystemTime = () => systemTime
+    )
 
     ingest.pollAndIngest()
 
-    val outputDir = conf.dataDir.resolve(sourceID)
+    val outputDir = conf.repository.dataDir.resolve(sourceID)
 
     spark.read.parquet(outputDir.toString)
   }
@@ -96,7 +105,8 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(0), "added", 1, "alex", 100, 0),
           (ts(0), "added", 2, "bob", 200, 0),
           (ts(0), "added", 3, "charlie", 300, 0)
-        ))
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "balance", "version")
 
     withTempDir(tempDir => {
@@ -132,7 +142,8 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(1), "removed", 1, "alex", 100, 0),
           (ts(1), "changed", 3, "charlie", 500, 1),
           (ts(1), "added", 4, "dan", 100, 0)
-        ))
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "balance", "version")
 
     withTempDir(tempDir => {
