@@ -42,7 +42,7 @@ class Ingest(
       val cachePath = config.repository.checkpointDir
         .resolve(source.id)
 
-      val ingestedPath = config.repository.dataDir.resolve(source.id)
+      val ingestedPath = config.repository.dataDirRoot.resolve(source.id)
 
       val downloadResult = maybeDownload(source, cachePath, downloadPath)
 
