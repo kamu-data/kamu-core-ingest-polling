@@ -6,12 +6,12 @@ import java.net.URI
 import FSUtils._
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
-import org.json4s.JsonAST.{JNull, JString}
-import org.json4s.jackson.Serialization
-import org.json4s.{CustomSerializer, NoTypeHints}
+import dev.kamu.core.manifests.Manifest
+import dev.kamu.core.manifests.parsing.pureconfig.yaml
+import yaml.defaults._
+import pureconfig.generic.auto._
 
 class CachingDownloader(fileSystem: FileSystem) {
-  private implicit val formats = Serialization.formats(NoTypeHints) + UriSerializer
   private val logger = LogManager.getLogger(getClass.getName)
 
   def maybeDownload(
@@ -73,7 +73,7 @@ class CachingDownloader(fileSystem: FileSystem) {
       return None
 
     val inputStream = fileSystem.open(cachePath)
-    val cacheInfo = Serialization.read[CacheInfo](inputStream)
+    val cacheInfo = yaml.load[Manifest[CacheInfo]](inputStream).content
 
     if (cacheInfo.url != url)
       return None
@@ -88,7 +88,8 @@ class CachingDownloader(fileSystem: FileSystem) {
       fileSystem.mkdirs(cachePath.getParent)
 
     val outputStream = fileSystem.create(cachePath)
-    Serialization.write(cacheInfo, outputStream)
+
+    yaml.save(cacheInfo.asManifest, outputStream)
     outputStream.close()
   }
 
@@ -96,14 +97,3 @@ class CachingDownloader(fileSystem: FileSystem) {
     cacheDir.resolve(AppConf.pollCacheFileName)
   }
 }
-
-case object UriSerializer
-    extends CustomSerializer[URI](
-      format =>
-        ({
-          case JString(uri) => URI.create(uri)
-          case JNull        => null
-        }, {
-          case uri: URI => JString(uri.toString)
-        })
-    )

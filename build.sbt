@@ -18,12 +18,10 @@ lazy val kamuCoreIngestPolling = (project in file("."))
       // HTTP Utils
       "org.scalaj" %% "scalaj-http" % "2.4.1",
       "commons-net" % "commons-net" % "3.6",
-      // Serialization
-      "org.json4s" %% "json4s-jackson" % "3.5.3",
       // Spark
       "org.apache.spark" %% "spark-core" % Versions.spark % "provided",
       "org.apache.spark" %% "spark-sql" % Versions.spark % "provided",
-      // GeoSpark (should be installed in your spark)
+      // GeoSpark
       "org.datasyslab" % "geospark" % "1.2.0",
       "org.datasyslab" % "geospark-sql_2.3" % "1.2.0",
       // Testing

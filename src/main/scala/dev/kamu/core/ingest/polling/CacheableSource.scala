@@ -3,19 +3,21 @@ package dev.kamu.core.ingest.polling
 import java.io.InputStream
 import java.net.URI
 import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.format.DateTimeFormatter
+import java.time.{Instant, ZonedDateTime}
 
 import org.apache.commons.net.ftp.{FTP, FTPClient}
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
 import scalaj.http.Http
+import dev.kamu.core.manifests.Resource
 
 case class CacheInfo(
   url: URI,
-  lastModified: Option[Date] = None,
+  lastModified: Option[Instant] = None,
   eTag: Option[String] = None,
-  lastDownloadDate: Date
-) {
+  lastDownloaded: Instant
+) extends Resource[CacheInfo] {
   def isCacheable: Boolean = {
     eTag.isDefined || lastModified.isDefined
   }
@@ -51,7 +53,7 @@ class FileSystemCacheableSource(fileSystem: FileSystem)
 
     DownloadResult(
       wasUpToDate = false,
-      cacheInfo = CacheInfo(url = url, lastDownloadDate = new Date())
+      cacheInfo = CacheInfo(url = url, lastDownloaded = Instant.now())
     )
   }
 }
@@ -98,9 +100,14 @@ class HTTPCacheableSource extends CacheableSource {
             url = url,
             lastModified = response
               .header("LastModified")
-              .map(lastModifiedHeaderFormat.parse),
+              .map(
+                s =>
+                  ZonedDateTime
+                    .parse(s, DateTimeFormatter.RFC_1123_DATE_TIME)
+                    .toInstant
+              ),
             eTag = response.header("ETag"),
-            lastDownloadDate = new Date()
+            lastDownloaded = Instant.now()
           )
         )
       case 304 =>
@@ -134,7 +141,7 @@ class FTPCacheableSource extends CacheableSource {
 
     DownloadResult(
       wasUpToDate = false,
-      cacheInfo = CacheInfo(url = url, lastDownloadDate = new Date())
+      cacheInfo = CacheInfo(url = url, lastDownloaded = Instant.now())
     )
   }
 }
