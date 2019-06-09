@@ -2,18 +2,20 @@ package dev.kamu.core.ingest.polling
 
 import java.io.InputStream
 
-import dev.kamu.core.manifests.{DataSourcePolling, RepositoryVolumeMap}
+import dev.kamu.core.manifests.{
+  Manifest,
+  DataSourcePolling,
+  RepositoryVolumeMap
+}
 
 case class AppConf(
   repository: RepositoryVolumeMap,
   sources: Vector[DataSourcePolling] = Vector.empty
-) {
-  def withDefaults(): AppConf = {
-    copy(sources = sources.map(source => source.withDefaults()))
-  }
-}
+)
 
 object AppConf {
+  import dev.kamu.core.manifests.parsing.pureconfig.yaml
+  import yaml.defaults._
   import pureconfig.generic.auto._
 
   val configFileName = "poll-config.yaml"
@@ -35,12 +37,16 @@ object AppConf {
   }
 
   def load(): AppConf = {
-    val source = DataSourcePolling
-      .loadManifest(getConfigFromResources(dataSourceConfigFile))
+    val source = yaml
+      .load[Manifest[DataSourcePolling]](
+        getConfigFromResources(dataSourceConfigFile)
+      )
       .content
 
-    val repository = RepositoryVolumeMap
-      .loadManifest(getConfigFromResources(repositoryConfigFile))
+    val repository = yaml
+      .load[Manifest[RepositoryVolumeMap]](
+        getConfigFromResources(repositoryConfigFile)
+      )
       .content
 
     val appConfig = AppConf(
@@ -48,6 +54,6 @@ object AppConf {
       sources = Vector(source)
     )
 
-    appConfig.withDefaults()
+    appConfig
   }
 }
