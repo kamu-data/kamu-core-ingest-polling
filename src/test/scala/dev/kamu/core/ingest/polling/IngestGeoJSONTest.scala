@@ -61,18 +61,19 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
       repository = RepositoryVolumeMap(
         downloadDir = tempDir.resolve("poll"),
         checkpointDir = tempDir.resolve("checkpoint"),
-        dataDir = tempDir.resolve("root")
+        dataDirRoot = tempDir.resolve("root"),
+        dataDirDeriv = tempDir.resolve("deriv")
       ),
-      sources = Vector(
+      sources = List(
         DataSourcePolling(
           id = sourceID,
           url = inputPath.toUri,
           format = "geojson",
           mergeStrategy =
             Snapshot(primaryKey = "id", modificationIndicator = None)
-        )
+        ).postLoad()
       )
-    ).withDefaults()
+    )
 
     val ingest = new Ingest(
       config = conf,
@@ -83,7 +84,7 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
 
     ingest.pollAndIngest()
 
-    val outputDir = conf.repository.dataDir.resolve(sourceID)
+    val outputDir = conf.repository.dataDirRoot.resolve(sourceID)
 
     spark.read.parquet(outputDir.toString)
   }

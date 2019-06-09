@@ -10,7 +10,7 @@ import dev.kamu.core.manifests.{
 
 case class AppConf(
   repository: RepositoryVolumeMap,
-  sources: Vector[DataSourcePolling] = Vector.empty
+  sources: List[DataSourcePolling]
 )
 
 object AppConf {
@@ -22,26 +22,9 @@ object AppConf {
   val pollCacheFileName = "poll-cache.json"
 
   val repositoryConfigFile = "repositoryVolumeMap.yaml"
-  val dataSourceConfigFile = "dataSourcePolling.yaml"
-
-  private def getConfigFromResources(configFileName: String): InputStream = {
-    val configStream =
-      getClass.getClassLoader.getResourceAsStream(configFileName)
-
-    if (configStream == null)
-      throw new RuntimeException(
-        s"Unable to locate $configFileName on classpath"
-      )
-
-    configStream
-  }
 
   def load(): AppConf = {
-    val source = yaml
-      .load[Manifest[DataSourcePolling]](
-        getConfigFromResources(dataSourceConfigFile)
-      )
-      .content
+    val sources = findSources()
 
     val repository = yaml
       .load[Manifest[RepositoryVolumeMap]](
@@ -51,9 +34,39 @@ object AppConf {
 
     val appConfig = AppConf(
       repository = repository,
-      sources = Vector(source)
+      sources = sources
     )
 
     appConfig
+  }
+
+  // TODO: This sucks, but searching resources via pattern in Java is a pain
+  private def findSources(
+    index: Int = 0,
+    tail: List[DataSourcePolling] = List.empty
+  ): List[DataSourcePolling] = {
+    val stream = getClass.getClassLoader.getResourceAsStream(
+      s"dataSourcePolling_$index.yaml"
+    )
+
+    if (stream == null) {
+      tail.reverse
+    } else {
+      val source = yaml.load[Manifest[DataSourcePolling]](stream).content
+      findSources(index + 1, source :: tail)
+    }
+  }
+
+  private def getConfigFromResources(configFileName: String): InputStream = {
+
+    val configStream =
+      getClass.getClassLoader.getResourceAsStream(configFileName)
+
+    if (configStream == null)
+      throw new RuntimeException(
+        s"Unable to locate $configFileName on classpath"
+      )
+
+    configStream
   }
 }

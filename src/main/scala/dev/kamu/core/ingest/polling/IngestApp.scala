@@ -13,8 +13,12 @@ object IngestApp {
   def main(args: Array[String]) {
     val logger = LogManager.getLogger(getClass.getName)
     val config = AppConf.load()
-    val ingest = new Ingest(config, hadoopConf, sparkSession, systemTime)
-    ingest.pollAndIngest()
+    if (config.sources.isEmpty) {
+      logger.warn("No data sources specified")
+    } else {
+      val ingest = new Ingest(config, hadoopConf, sparkSession, systemTime)
+      ingest.pollAndIngest()
+    }
   }
 
   private def sparkConf(): SparkConf = {
