@@ -4,7 +4,7 @@ import java.sql.Timestamp
 import java.util.zip.ZipInputStream
 
 import DFUtils._
-import FSUtils._
+import dev.kamu.core.manifests.utils.fs._
 import dev.kamu.core.manifests.DataSourcePolling
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -138,7 +138,7 @@ class Ingest(
     val bzip2Stream = new BZip2CompressorInputStream(inputStream)
     val zipStream = new ZipInputStream(bzip2Stream)
 
-    FSUtils.extractZipFile(
+    ZipFiles.extractZipFile(
       fileSystem,
       zipStream,
       extractedPath,

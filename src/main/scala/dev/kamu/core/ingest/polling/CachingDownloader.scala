@@ -3,7 +3,7 @@ package dev.kamu.core.ingest.polling
 import java.io._
 import java.net.URI
 
-import FSUtils._
+import dev.kamu.core.manifests.utils.fs._
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
 import dev.kamu.core.manifests.Manifest

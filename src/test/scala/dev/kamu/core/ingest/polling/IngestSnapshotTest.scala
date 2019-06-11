@@ -4,7 +4,7 @@ import java.io.PrintWriter
 import java.sql.Timestamp
 import java.util.UUID
 
-import FSUtils._
+import dev.kamu.core.manifests.utils.fs._
 import dev.kamu.core.manifests.{
   DataSourcePolling,
   RepositoryVolumeMap,
