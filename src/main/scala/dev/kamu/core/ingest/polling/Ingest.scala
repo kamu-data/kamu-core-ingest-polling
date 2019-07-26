@@ -36,13 +36,14 @@ class Ingest(
       logger.info(s"Processing source: ${source.id}")
 
       val downloadPath = config.repository.downloadDir
-        .resolve(source.id)
+        .resolve(source.id.toString)
         .resolve(s"data.${compression.fileExtension}")
 
       val cachePath = config.repository.checkpointDir
-        .resolve(source.id)
+        .resolve(source.id.toString)
 
-      val ingestedPath = config.repository.dataDirRoot.resolve(source.id)
+      val ingestedPath =
+        config.repository.dataDirRoot.resolve(source.id.toString)
 
       val downloadResult = maybeDownload(source, cachePath, downloadPath)
 
