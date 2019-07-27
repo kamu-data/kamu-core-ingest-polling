@@ -13,8 +13,8 @@ lazy val kamuCoreIngestPolling = (project in file("."))
       // Internal
       "dev.kamu" %% "kamu-core-manifests" % "0.1.0-SNAPSHOT",
       // Config
-      "com.github.pureconfig" %% "pureconfig" % "0.10.2",
-      "com.github.pureconfig" %% "pureconfig-yaml" % "0.10.2",
+      "com.github.pureconfig" %% "pureconfig" % "0.11.1",
+      "com.github.pureconfig" %% "pureconfig-yaml" % "0.11.1",
       // HTTP Utils
       "org.scalaj" %% "scalaj-http" % "2.4.1",
       "commons-net" % "commons-net" % "3.6",

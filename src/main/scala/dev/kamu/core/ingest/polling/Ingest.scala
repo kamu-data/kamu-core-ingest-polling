@@ -5,7 +5,7 @@ import java.util.zip.ZipInputStream
 
 import DFUtils._
 import dev.kamu.core.manifests.utils.fs._
-import dev.kamu.core.manifests.DataSourcePolling
+import dev.kamu.core.manifests.RootPollingSource
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
@@ -32,20 +32,23 @@ class Ingest(
     logger.info(s"Starting ingest")
     logger.info(s"Running with config: $config")
 
-    for (source <- config.sources) {
-      logger.info(s"Processing source: ${source.id}")
+    for (ds <- config.datasets) {
+      logger.info(s"Processing dataset: ${ds.id}")
 
       val downloadPath = config.repository.downloadDir
-        .resolve(source.id.toString)
+        .resolve(ds.id.toString)
         .resolve(s"data.${compression.fileExtension}")
 
       val cachePath = config.repository.checkpointDir
-        .resolve(source.id.toString)
+        .resolve(ds.id.toString)
 
       val ingestedPath =
-        config.repository.dataDirRoot.resolve(source.id.toString)
+        config.repository.dataDirRoot.resolve(ds.id.toString)
 
-      val downloadResult = maybeDownload(source, cachePath, downloadPath)
+      val source = ds.rootPollingSource.get
+
+      val downloadResult =
+        maybeDownload(source, cachePath, downloadPath)
 
       if (!downloadResult.wasUpToDate) {
         ingest(
@@ -61,7 +64,7 @@ class Ingest(
   }
 
   def maybeDownload(
-    source: DataSourcePolling,
+    source: RootPollingSource,
     cachePath: Path,
     downloadPath: Path
   ): DownloadResult = {
@@ -84,7 +87,7 @@ class Ingest(
 
   def ingest(
     spark: SparkSession,
-    source: DataSourcePolling,
+    source: RootPollingSource,
     filePath: Path,
     outPath: Path
   ): Unit = {
@@ -113,7 +116,7 @@ class Ingest(
 
   def readGeneric(
     spark: SparkSession,
-    source: DataSourcePolling,
+    source: RootPollingSource,
     filePath: Path
   ): DataFrame = {
     val reader = spark.read
@@ -130,7 +133,7 @@ class Ingest(
   // TODO: This is inefficient
   def readShapefile(
     spark: SparkSession,
-    source: DataSourcePolling,
+    source: RootPollingSource,
     filePath: Path
   ): DataFrame = {
     val extractedPath = filePath.getParent.resolve("shapefile")
@@ -164,7 +167,7 @@ class Ingest(
   // TODO: This is very inefficient, should extend GeoSpark to support this
   def readGeoJSON(
     spark: SparkSession,
-    source: DataSourcePolling,
+    source: RootPollingSource,
     filePath: Path
   ): DataFrame = {
     val rdd = GeoJsonReader.readToGeometryRDD(
@@ -185,13 +188,13 @@ class Ingest(
   // TODO: Replace with generic options to skip N lines
   def readWorldbankCSV(
     spark: SparkSession,
-    source: DataSourcePolling,
+    source: RootPollingSource,
     filePath: Path
   ): DataFrame = {
     readGeneric(spark, source.copy(format = "csv"), filePath)
   }
 
-  def normalizeSchema(source: DataSourcePolling)(df: DataFrame): DataFrame = {
+  def normalizeSchema(source: RootPollingSource)(df: DataFrame): DataFrame = {
     if (source.schema.nonEmpty)
       return df
 
@@ -207,7 +210,7 @@ class Ingest(
     result
   }
 
-  def preprocess(source: DataSourcePolling)(df: DataFrame): DataFrame = {
+  def preprocess(source: RootPollingSource)(df: DataFrame): DataFrame = {
     if (source.preprocess.isEmpty)
       return df
 
@@ -228,7 +231,7 @@ class Ingest(
     )
   }
 
-  def mergeWithExisting(source: DataSourcePolling, outPath: Path)(
+  def mergeWithExisting(source: RootPollingSource, outPath: Path)(
     curr: DataFrame
   ): DataFrame = {
     val spark = curr.sparkSession

@@ -4,7 +4,7 @@ import java.io.{InputStream, OutputStream}
 import java.util.regex.Pattern
 import java.util.zip.GZIPInputStream
 
-import dev.kamu.core.manifests.DataSourcePolling
+import dev.kamu.core.manifests.RootPollingSource
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream
 import org.apache.hadoop.fs.FileSystem
 import org.apache.log4j.LogManager
@@ -12,8 +12,10 @@ import org.apache.log4j.LogManager
 class Compression(fileSystem: FileSystem) {
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def getExtractedStream(source: DataSourcePolling,
-                         inputStream: InputStream): InputStream = {
+  def getExtractedStream(
+    source: RootPollingSource,
+    inputStream: InputStream
+  ): InputStream = {
     source.compression.map(_.toLowerCase) match {
       case None =>
         logger.info("Considering file uncompressed")
@@ -24,16 +26,21 @@ class Compression(fileSystem: FileSystem) {
       case Some("zip") =>
         logger.info("Extracting zip")
 
-        val subPathRegex = source.subPathRegex.orElse(source.subPath.map(p =>
-          Pattern.quote(p.toString)))
+        val subPathRegex = source.subPathRegex.orElse(
+          source.subPath.map(p => Pattern.quote(p.toString))
+        )
 
         val stream = subPathRegex
           .map(
             regex =>
               ZipEntryStream
                 .findFirst(inputStream, regex)
-                .getOrElse(throw new RuntimeException(
-                  "Failed to find an entry in the Zip file")))
+                .getOrElse(
+                  throw new RuntimeException(
+                    "Failed to find an entry in the Zip file"
+                  )
+                )
+          )
           .getOrElse(
             ZipEntryStream.first(inputStream)
           )

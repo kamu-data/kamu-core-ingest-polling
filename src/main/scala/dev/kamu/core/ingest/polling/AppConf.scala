@@ -2,15 +2,11 @@ package dev.kamu.core.ingest.polling
 
 import java.io.InputStream
 
-import dev.kamu.core.manifests.{
-  Manifest,
-  DataSourcePolling,
-  RepositoryVolumeMap
-}
+import dev.kamu.core.manifests.{Dataset, Manifest, RepositoryVolumeMap}
 
 case class AppConf(
   repository: RepositoryVolumeMap,
-  sources: List[DataSourcePolling]
+  datasets: List[Dataset]
 )
 
 object AppConf {
@@ -24,7 +20,7 @@ object AppConf {
   val repositoryConfigFile = "repositoryVolumeMap.yaml"
 
   def load(): AppConf = {
-    val sources = findSources()
+    val datasets = findSources()
 
     val repository = yaml
       .load[Manifest[RepositoryVolumeMap]](
@@ -34,7 +30,7 @@ object AppConf {
 
     val appConfig = AppConf(
       repository = repository,
-      sources = sources
+      datasets = datasets
     )
 
     appConfig
@@ -43,17 +39,23 @@ object AppConf {
   // TODO: This sucks, but searching resources via pattern in Java is a pain
   private def findSources(
     index: Int = 0,
-    tail: List[DataSourcePolling] = List.empty
-  ): List[DataSourcePolling] = {
+    tail: List[Dataset] = List.empty
+  ): List[Dataset] = {
     val stream = getClass.getClassLoader.getResourceAsStream(
-      s"dataSourcePolling_$index.yaml"
+      s"dataset_$index.yaml"
     )
 
     if (stream == null) {
       tail.reverse
     } else {
-      val source = yaml.load[Manifest[DataSourcePolling]](stream).content
-      findSources(index + 1, source :: tail)
+      val ds = yaml.load[Manifest[Dataset]](stream).content
+
+      if (ds.rootPollingSource.isEmpty)
+        throw new RuntimeException(
+          s"Expected a root dataset, got ${ds.kind}"
+        )
+
+      findSources(index + 1, ds :: tail)
     }
   }
 

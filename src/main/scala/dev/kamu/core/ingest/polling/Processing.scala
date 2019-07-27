@@ -2,16 +2,18 @@ package dev.kamu.core.ingest.polling
 
 import java.io.{InputStream, OutputStream}
 
-import dev.kamu.core.manifests.DataSourcePolling
+import dev.kamu.core.manifests.RootPollingSource
 import org.apache.commons.io.IOUtils
 import org.apache.log4j.LogManager
 
 class Processing {
   val logger = LogManager.getLogger(getClass.getName)
 
-  def process(source: DataSourcePolling,
-              inputStream: InputStream,
-              outputStream: OutputStream): Unit = {
+  def process(
+    source: RootPollingSource,
+    inputStream: InputStream,
+    outputStream: OutputStream
+  ): Unit = {
     source.format.toLowerCase match {
       case "geojson" =>
         logger.info(s"Pre-processing as GeoJSON")
@@ -24,8 +26,10 @@ class Processing {
     }
   }
 
-  private def processNoOp(inputStream: InputStream,
-                          outputStream: OutputStream): Unit = {
+  private def processNoOp(
+    inputStream: InputStream,
+    outputStream: OutputStream
+  ): Unit = {
     IOUtils.copy(inputStream, outputStream)
     inputStream.close()
     outputStream.close()

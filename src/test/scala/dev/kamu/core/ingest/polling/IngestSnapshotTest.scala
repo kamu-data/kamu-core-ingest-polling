@@ -6,8 +6,10 @@ import java.util.UUID
 
 import dev.kamu.core.manifests.utils.fs._
 import dev.kamu.core.manifests.{
-  DataSourcePolling,
+  Dataset,
+  DatasetID,
   RepositoryVolumeMap,
+  RootPollingSource,
   Snapshot
 }
 import org.apache.hadoop
@@ -49,7 +51,7 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     inputSchema: Vector[String],
     systemTime: Timestamp
   ) = {
-    val sourceID = "com.kamu.test"
+    val dsID = DatasetID("com.kamu.test")
 
     val inputPath = tempDir
       .resolve("src")
@@ -59,19 +61,26 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
 
     val conf = AppConf(
       repository = RepositoryVolumeMap(
-        downloadDir = tempDir.resolve("poll"),
-        checkpointDir = tempDir.resolve("checkpoint"),
+        sourcesDir = tempDir.resolve("sources"),
+        downloadDir = tempDir.resolve("downloads"),
+        checkpointDir = tempDir.resolve("checkpoints"),
         dataDirRoot = tempDir.resolve("root"),
         dataDirDeriv = tempDir.resolve("deriv")
       ),
-      sources = List(
-        DataSourcePolling(
-          id = sourceID,
-          url = inputPath.toUri,
-          format = "csv",
-          schema = inputSchema,
-          mergeStrategy =
-            Snapshot(primaryKey = "id", modificationIndicator = Some("version"))
+      datasets = List(
+        Dataset(
+          id = dsID,
+          rootPollingSource = Some(
+            RootPollingSource(
+              url = inputPath.toUri,
+              format = "csv",
+              schema = inputSchema,
+              mergeStrategy = Snapshot(
+                primaryKey = "id",
+                modificationIndicator = Some("version")
+              )
+            )
+          )
         ).postLoad()
       )
     )
@@ -85,7 +94,7 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
 
     ingest.pollAndIngest()
 
-    val outputDir = conf.repository.dataDirRoot.resolve(sourceID)
+    val outputDir = conf.repository.dataDirRoot.resolve(dsID.toString)
 
     spark.read.parquet(outputDir.toString)
   }
