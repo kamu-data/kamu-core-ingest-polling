@@ -8,7 +8,7 @@ import dev.kamu.core.manifests.utils.fs._
 import dev.kamu.core.manifests.{
   Dataset,
   DatasetID,
-  RepositoryVolumeMap,
+  VolumeMap,
   RootPollingSource,
   Snapshot
 }
@@ -60,7 +60,7 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     writeFile(inputPath, inputData)
 
     val conf = AppConf(
-      repository = RepositoryVolumeMap(
+      repository = VolumeMap(
         sourcesDir = tempDir.resolve("sources"),
         downloadDir = tempDir.resolve("downloads"),
         checkpointDir = tempDir.resolve("checkpoints"),

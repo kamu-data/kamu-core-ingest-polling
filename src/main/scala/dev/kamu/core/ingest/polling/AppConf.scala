@@ -2,10 +2,10 @@ package dev.kamu.core.ingest.polling
 
 import java.io.InputStream
 
-import dev.kamu.core.manifests.{Dataset, Manifest, RepositoryVolumeMap}
+import dev.kamu.core.manifests.{Dataset, Manifest, VolumeMap}
 
 case class AppConf(
-  repository: RepositoryVolumeMap,
+  volumeMap: VolumeMap,
   datasets: List[Dataset]
 )
 
@@ -22,14 +22,14 @@ object AppConf {
   def load(): AppConf = {
     val datasets = findSources()
 
-    val repository = yaml
-      .load[Manifest[RepositoryVolumeMap]](
+    val volumeMap = yaml
+      .load[Manifest[VolumeMap]](
         getConfigFromResources(repositoryConfigFile)
       )
       .content
 
     val appConfig = AppConf(
-      repository = repository,
+      volumeMap = volumeMap,
       datasets = datasets
     )
 

@@ -35,15 +35,15 @@ class Ingest(
     for (ds <- config.datasets) {
       logger.info(s"Processing dataset: ${ds.id}")
 
-      val downloadPath = config.repository.downloadDir
+      val downloadPath = config.volumeMap.downloadDir
         .resolve(ds.id.toString)
         .resolve(s"data.${compression.fileExtension}")
 
-      val cachePath = config.repository.checkpointDir
+      val cachePath = config.volumeMap.checkpointDir
         .resolve(ds.id.toString)
 
       val ingestedPath =
-        config.repository.dataDirRoot.resolve(ds.id.toString)
+        config.volumeMap.dataDirRoot.resolve(ds.id.toString)
 
       val source = ds.rootPollingSource.get
 
