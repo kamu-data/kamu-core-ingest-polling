@@ -60,8 +60,7 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
     writeFile(inputPath, inputData)
 
     val conf = AppConf(
-      repository = VolumeMap(
-        sourcesDir = tempDir.resolve("sources"),
+      volumeMap = VolumeMap(
         downloadDir = tempDir.resolve("downloads"),
         checkpointDir = tempDir.resolve("checkpoints"),
         dataDirRoot = tempDir.resolve("root"),
@@ -91,7 +90,7 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
 
     ingest.pollAndIngest()
 
-    val outputDir = conf.repository.dataDirRoot.resolve(dsID.toString)
+    val outputDir = conf.volumeMap.dataDirRoot.resolve(dsID.toString)
 
     spark.read.parquet(outputDir.toString)
   }
