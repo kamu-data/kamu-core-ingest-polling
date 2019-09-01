@@ -69,6 +69,7 @@ class HTTPCacheableSource extends CacheableSource {
     handler: InputStream => Unit
   ): DownloadResult = {
     var request = Http(url.toString)
+      .timeout(connTimeoutMs = 30 * 1000, readTimeoutMs = 30 * 1000)
       .method("GET")
 
     if (cacheInfo.isDefined) {
