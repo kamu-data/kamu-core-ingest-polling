@@ -58,7 +58,7 @@ class CachingDownloader(fileSystem: FileSystem) {
         new FTPCacheableSource()
       case "gs" =>
         new FileSystemCacheableSource(fileSystem)
-      case "hdfs" | null =>
+      case "hdfs" | "file" | null =>
         // TODO: restrict allowed source paths for security
         new FileSystemCacheableSource(fileSystem)
       case _ =>
