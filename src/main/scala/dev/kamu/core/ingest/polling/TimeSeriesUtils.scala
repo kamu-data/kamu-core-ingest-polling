@@ -1,5 +1,7 @@
 package dev.kamu.core.ingest.polling
 
+import java.sql.Timestamp
+
 import dev.kamu.core.manifests.DatasetVocabulary
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.functions.{col, last, lit}
@@ -13,7 +15,7 @@ object TimeSeriesUtils {
     spark.createDataFrame(spark.sparkContext.emptyRDD[Row], proto.schema)
   }
 
-  /** Creates a snapshot from time series data.
+  /** Projects time series data onto specific point in system time.
     *
     * Time series data is expected to have following columns:
     *   - observation
@@ -24,9 +26,10 @@ object TimeSeriesUtils {
     *
     * TODO: Test performance of ORDER BY + LAST() vs ORDER BY DESC + FIRST()
     **/
-  def timeSeriesToSnapshot(
+  def asOf(
     series: DataFrame,
     pkColumn: String,
+    systemTime: Option[Timestamp] = None,
     vocab: DatasetVocabulary = DatasetVocabulary()
   ): DataFrame = {
     def aggAlias(c: String) = "__" + c
@@ -49,10 +52,18 @@ object TimeSeriesUtils {
     )
 
     series
+      .when(_ => systemTime.isDefined)(
+        _.filter(col(vocab.systemTimeColumn) <= systemTime.get)
+      )
       .orderBy(vocab.systemTimeColumn)
       .groupBy(pkColumn)
       .aggv(aggregates: _*)
       .filter(col(aggAlias(vocab.observationColumn)) =!= lit(vocab.obsvRemoved))
       .select(resultColumns: _*)
   }
+
+  implicit class When[A](a: A) {
+    def when(f: A => Boolean)(g: A => A): A = if (f(a)) g(a) else a
+  }
+
 }
