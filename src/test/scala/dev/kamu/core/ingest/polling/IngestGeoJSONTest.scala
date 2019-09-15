@@ -148,7 +148,7 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
         Seq(
           (
             ts(0),
-            "added",
+            "I",
             "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))",
             "0",
             "00101",
@@ -156,7 +156,7 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
           ),
           (
             ts(0),
-            "added",
+            "I",
             "POLYGON ((0 0, 20 0, 20 20, 0 20, 0 0))",
             "1",
             "00202",

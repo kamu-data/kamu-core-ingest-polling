@@ -15,15 +15,16 @@ class TimeSeriesUtilsTest extends FunSuite with DataFrameSuiteBaseEx {
     val series = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "A", "x"),
-          (ts(0), "added", 2, "B", "y"),
-          (ts(0), "added", 3, "C", "z"),
-          (ts(1), "changed", 1, "A", "a"),
-          (ts(1), "changed", 2, "B", "b"),
-          (ts(2), "removed", 1, "A", "a"),
-          (ts(2), "changed", 2, "B", "bb"),
-          (ts(3), "added", 4, "D", "d")
-        ))
+          (ts(0), "I", 1, "A", "x"),
+          (ts(0), "I", 2, "B", "y"),
+          (ts(0), "I", 3, "C", "z"),
+          (ts(1), "U", 1, "A", "a"),
+          (ts(1), "U", 2, "B", "b"),
+          (ts(2), "D", 1, "A", "a"),
+          (ts(2), "U", 2, "B", "bb"),
+          (ts(3), "I", 4, "D", "d")
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data")
 
     val actual = TimeSeriesUtils
@@ -36,7 +37,8 @@ class TimeSeriesUtilsTest extends FunSuite with DataFrameSuiteBaseEx {
           (2, "B", "bb", ts(2)),
           (3, "C", "z", ts(0)),
           (4, "D", "d", ts(3))
-        ))
+        )
+      )
       .toDF("id", "name", "data", "lastUpdatedSys")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)

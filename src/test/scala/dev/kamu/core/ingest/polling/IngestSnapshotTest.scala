@@ -111,9 +111,9 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "alex", 100, 0),
-          (ts(0), "added", 2, "bob", 200, 0),
-          (ts(0), "added", 3, "charlie", 300, 0)
+          (ts(0), "I", 1, "alex", 100, 0),
+          (ts(0), "I", 2, "bob", 200, 0),
+          (ts(0), "I", 3, "charlie", 300, 0)
         )
       )
       .toDF("systemTime", "observed", "id", "name", "balance", "version")
@@ -145,12 +145,12 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "alex", 100, 0),
-          (ts(0), "added", 2, "bob", 200, 0),
-          (ts(0), "added", 3, "charlie", 300, 0),
-          (ts(1), "removed", 1, "alex", 100, 0),
-          (ts(1), "changed", 3, "charlie", 500, 1),
-          (ts(1), "added", 4, "dan", 100, 0)
+          (ts(0), "I", 1, "alex", 100, 0),
+          (ts(0), "I", 2, "bob", 200, 0),
+          (ts(0), "I", 3, "charlie", 300, 0),
+          (ts(1), "D", 1, "alex", 100, 0),
+          (ts(1), "U", 3, "charlie", 500, 1),
+          (ts(1), "I", 4, "dan", 100, 0)
         )
       )
       .toDF("systemTime", "observed", "id", "name", "balance", "version")

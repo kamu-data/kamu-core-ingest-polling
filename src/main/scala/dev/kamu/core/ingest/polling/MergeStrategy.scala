@@ -21,8 +21,10 @@ object MergeStrategy {
       case c: Ledger =>
         new LedgerMergeStrategy(c.primaryKey)
       case c: Snapshot =>
-        new SnapshotMergeStrategy(pk = c.primaryKey,
-                                  modInd = c.modificationIndicator)
+        new SnapshotMergeStrategy(
+          pk = c.primaryKey,
+          modInd = c.modificationIndicator
+        )
       case _ =>
         throw new NotImplementedError(s"Unsupported strategy: $kind")
     }
@@ -30,9 +32,11 @@ object MergeStrategy {
 }
 
 abstract class MergeStrategy {
-  def merge(prev: Option[DataFrame],
-            curr: DataFrame,
-            systemTime: Timestamp): DataFrame
+  def merge(
+    prev: Option[DataFrame],
+    curr: DataFrame,
+    systemTime: Timestamp
+  ): DataFrame
 }
 
 /** Append merge strategy.
@@ -48,9 +52,11 @@ class AppendMergeStrategy(
   vocab: DatasetVocabulary = DatasetVocabulary()
 ) extends MergeStrategy {
 
-  override def merge(prev: Option[DataFrame],
-                     curr: DataFrame,
-                     systemTime: Timestamp): DataFrame = {
+  override def merge(
+    prev: Option[DataFrame],
+    curr: DataFrame,
+    systemTime: Timestamp
+  ): DataFrame = {
     if (addSystemTime) {
       curr.withColumn(vocab.systemTimeColumn, lit(systemTime))
     } else {
@@ -101,7 +107,8 @@ class LedgerMergeStrategy(
           curr
             .getColumn(columnName)
             .getOrElse(lit(null))
-            .as(columnName))
+            .as(columnName)
+      )
 
     curr
       .join(prev, curr(pk) === prev(pk), "left_outer")
@@ -139,7 +146,7 @@ class LedgerMergeStrategy(
   * new snapshots, so the set of columns can only grow.
   *
   * @param pk primary key column name
-  * @param modInd optional modification indicator column name
+  * @param modInd column that always changes when the rest of the row is modified
   * @param vocab vocabulary of system column names and values
   */
 class SnapshotMergeStrategy(
@@ -177,9 +184,11 @@ class SnapshotMergeStrategy(
     *   OR curr.${modInd} != prev.${modInd}
     * }}}
     */
-  override def merge(prevSeries: Option[DataFrame],
-                     curr: DataFrame,
-                     systemTime: Timestamp): DataFrame = {
+  override def merge(
+    prevSeries: Option[DataFrame],
+    curr: DataFrame,
+    systemTime: Timestamp
+  ): DataFrame = {
     val prev = if (prevSeries.isDefined) {
       TimeSeriesUtils
         .timeSeriesToSnapshot(prevSeries.get, pk)
@@ -218,22 +227,27 @@ class SnapshotMergeStrategy(
     val resultDataColumns = combinedDataColumnNames
       .map(
         columnName =>
-          when(col(vocab.observationColumn) === vocab.obsvRemoved,
-               columnOrNull(prev, columnName))
-            .otherwise(columnOrNull(curr, columnName))
-            .as(columnName))
+          when(
+            col(vocab.observationColumn) === vocab.obsvRemoved,
+            columnOrNull(prev, columnName)
+          ).otherwise(columnOrNull(curr, columnName))
+            .as(columnName)
+      )
 
     val resultColumns = col(vocab.systemTimeColumn) :: col(
-      vocab.observationColumn) :: resultDataColumns
+      vocab.observationColumn
+    ) :: resultDataColumns
 
     curr
       .join(prev, prev(pk) === curr(pk), "full_outer")
       .filter(curr(pk).isNull || prev(pk).isNull || changedPredicate)
       .withColumn(vocab.systemTimeColumn, lit(systemTime))
-      .withColumn(vocab.observationColumn,
-                  when(prev(pk).isNull, vocab.obsvAdded)
-                    .when(curr(pk).isNull, vocab.obsvRemoved)
-                    .otherwise(vocab.obsvChanged))
+      .withColumn(
+        vocab.observationColumn,
+        when(prev(pk).isNull, vocab.obsvAdded)
+          .when(curr(pk).isNull, vocab.obsvRemoved)
+          .otherwise(vocab.obsvChanged)
+      )
       .select(resultColumns: _*)
   }
 }

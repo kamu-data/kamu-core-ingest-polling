@@ -18,7 +18,8 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           (1, "A", "x", 0),
           (2, "B", "y", 0),
           (3, "C", "z", 0)
-        ))
+        )
+      )
       .toDF("id", "name", "data", "version")
 
     val strategy = new SnapshotMergeStrategy("id", Some("version"))
@@ -30,10 +31,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "A", "x", 0),
-          (ts(0), "added", 2, "B", "y", 0),
-          (ts(0), "added", 3, "C", "z", 0)
-        ))
+          (ts(0), "I", 1, "A", "x", 0),
+          (ts(0), "I", 2, "B", "y", 0),
+          (ts(0), "I", 3, "C", "z", 0)
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data", "version")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
@@ -43,10 +45,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val prev = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "A", "x", 0),
-          (ts(0), "added", 2, "B", "y", 0),
-          (ts(0), "added", 3, "C", "z", 0)
-        ))
+          (ts(0), "I", 1, "A", "x", 0),
+          (ts(0), "I", 2, "B", "y", 0),
+          (ts(0), "I", 3, "C", "z", 0)
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data", "version")
 
     val curr = sc
@@ -55,7 +58,8 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           (1, "A", "x", 0),
           (2, "B", "y", 0),
           (3, "C", "z", 0)
-        ))
+        )
+      )
       .toDF("id", "name", "data", "version")
 
     val strategy = new SnapshotMergeStrategy("id", Some("version"))
@@ -75,10 +79,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val prev = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "A", "x"),
-          (ts(0), "added", 2, "B", "y"),
-          (ts(0), "added", 3, "C", "z")
-        ))
+          (ts(0), "I", 1, "A", "x"),
+          (ts(0), "I", 2, "B", "y"),
+          (ts(0), "I", 3, "C", "z")
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data")
 
     val curr = sc
@@ -87,7 +92,8 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           (2, "B", "y"),
           (3, "C", "zz"),
           (4, "D", ".")
-        ))
+        )
+      )
       .toDF("id", "name", "data")
 
     val strategy = new SnapshotMergeStrategy("id", None)
@@ -99,10 +105,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "removed", 1, "A", "x"),
-          (ts(0), "changed", 3, "C", "zz"),
-          (ts(0), "added", 4, "D", ".")
-        ))
+          (ts(0), "D", 1, "A", "x"),
+          (ts(0), "U", 3, "C", "zz"),
+          (ts(0), "I", 4, "D", ".")
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
@@ -112,10 +119,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val prev = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "A", "x", 0),
-          (ts(0), "added", 2, "B", "y", 0),
-          (ts(0), "added", 3, "C", "z", 0)
-        ))
+          (ts(0), "I", 1, "A", "x", 0),
+          (ts(0), "I", 2, "B", "y", 0),
+          (ts(0), "I", 3, "C", "z", 0)
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data", "version")
 
     val curr = sc
@@ -124,7 +132,8 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           (2, "B", "y", 0),
           (3, "C", "zz", 1),
           (4, "D", ".", 0)
-        ))
+        )
+      )
       .toDF("id", "name", "data", "version")
 
     val strategy = new SnapshotMergeStrategy("id", Some("version"))
@@ -136,10 +145,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "removed", 1, "A", "x", 0),
-          (ts(0), "changed", 3, "C", "zz", 1),
-          (ts(0), "added", 4, "D", ".", 0)
-        ))
+          (ts(0), "D", 1, "A", "x", 0),
+          (ts(0), "U", 3, "C", "zz", 1),
+          (ts(0), "I", 4, "D", ".", 0)
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data", "version")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
@@ -149,10 +159,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val prev = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "A", "x", 0),
-          (ts(0), "added", 2, "B", "y", 0),
-          (ts(0), "added", 3, "C", "z", 0)
-        ))
+          (ts(0), "I", 1, "A", "x", 0),
+          (ts(0), "I", 2, "B", "y", 0),
+          (ts(0), "I", 3, "C", "z", 0)
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data", "version")
 
     val curr = sc
@@ -161,7 +172,8 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           (2, "B", "y", "a", 0),
           (3, "C", "zz", "b", 1),
           (4, "D", ".", "c", 0)
-        ))
+        )
+      )
       .toDF("id", "name", "data", "ext", "version")
 
     val strategy = new SnapshotMergeStrategy("id", Some("version"))
@@ -173,10 +185,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "removed", 1, "A", "x", 0, null),
-          (ts(0), "changed", 3, "C", "zz", 1, "b"),
-          (ts(0), "added", 4, "D", ".", 0, "c")
-        ))
+          (ts(0), "D", 1, "A", "x", 0, null),
+          (ts(0), "U", 3, "C", "zz", 1, "b"),
+          (ts(0), "I", 4, "D", ".", 0, "c")
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data", "version", "ext")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
@@ -186,10 +199,11 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val prev = sc
       .parallelize(
         Seq(
-          (ts(0), "added", 1, "A", "x", "a", 0),
-          (ts(0), "added", 2, "B", "y", "b", 0),
-          (ts(0), "added", 3, "C", "z", "c", 0)
-        ))
+          (ts(0), "I", 1, "A", "x", "a", 0),
+          (ts(0), "I", 2, "B", "y", "b", 0),
+          (ts(0), "I", 3, "C", "z", "c", 0)
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data", "ext", "version")
 
     val curr = sc
@@ -198,7 +212,8 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           (2, "B", "y", 1),
           (3, "C", "z", 1),
           (4, "D", ".", 0)
-        ))
+        )
+      )
       .toDF("id", "name", "data", "version")
 
     val strategy = new SnapshotMergeStrategy("id", Some("version"))
@@ -210,11 +225,12 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "removed", 1, "A", "x", "a", 0),
-          (ts(0), "changed", 2, "B", "y", null, 1),
-          (ts(0), "changed", 3, "C", "z", null, 1),
-          (ts(0), "added", 4, "D", ".", null, 0)
-        ))
+          (ts(0), "D", 1, "A", "x", "a", 0),
+          (ts(0), "U", 2, "B", "y", null, 1),
+          (ts(0), "U", 3, "C", "z", null, 1),
+          (ts(0), "I", 4, "D", ".", null, 0)
+        )
+      )
       .toDF("systemTime", "observed", "id", "name", "data", "ext", "version")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
