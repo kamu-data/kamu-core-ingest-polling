@@ -48,13 +48,30 @@ class FileSystemCacheableSource(fileSystem: FileSystem)
     val sourcePath = new Path(url)
     val fs = sourcePath.getFileSystem(fileSystem.getConf)
 
-    // TODO: add cacheability via hashing or file stats
-    handler(fs.open(sourcePath))
+    val lastModified =
+      Instant.ofEpochMilli(fs.getFileStatus(sourcePath).getModificationTime)
 
-    DownloadResult(
-      wasUpToDate = false,
-      cacheInfo = CacheInfo(url = url, lastDownloaded = Instant.now())
-    )
+    val needsPull = cacheInfo
+      .flatMap(_.lastModified)
+      .forall(lastModified.compareTo(_) > 0)
+
+    if (needsPull) {
+      handler(fs.open(sourcePath))
+
+      DownloadResult(
+        wasUpToDate = false,
+        cacheInfo = CacheInfo(
+          url = url,
+          lastDownloaded = Instant.now(),
+          lastModified = Some(lastModified)
+        )
+      )
+    } else {
+      DownloadResult(
+        wasUpToDate = true,
+        cacheInfo = cacheInfo.get
+      )
+    }
   }
 }
 
