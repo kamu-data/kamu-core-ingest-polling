@@ -18,10 +18,11 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(0), 1, "a"),
           (ts(1), 2, "b"),
           (ts(2), 3, "c")
-        ))
+        )
+      )
       .toDF("eventTime", "id", "data")
 
-    val strategy = new LedgerMergeStrategy("id")
+    val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
       .merge(None, curr, ts(3))
@@ -33,7 +34,8 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(3), ts(0), 1, "a"),
           (ts(3), ts(1), 2, "b"),
           (ts(3), ts(2), 3, "c")
-        ))
+        )
+      )
       .toDF("systemTime", "eventTime", "id", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
@@ -46,7 +48,8 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(3), ts(0), 1, "a"),
           (ts(3), ts(1), 2, "b"),
           (ts(3), ts(2), 3, "c")
-        ))
+        )
+      )
       .toDF("systemTime", "eventTime", "id", "data")
 
     val curr = sc
@@ -58,10 +61,11 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(3), 4, "d"),
           (ts(4), 5, "e"),
           (ts(5), 6, "f")
-        ))
+        )
+      )
       .toDF("eventTime", "id", "data")
 
-    val strategy = new LedgerMergeStrategy("id")
+    val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(6))
@@ -73,7 +77,8 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(6), ts(3), 4, "d"),
           (ts(6), ts(4), 5, "e"),
           (ts(6), ts(5), 6, "f")
-        ))
+        )
+      )
       .toDF("systemTime", "eventTime", "id", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
@@ -86,7 +91,8 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(3), ts(0), 1, "a"),
           (ts(3), ts(1), 2, "b"),
           (ts(3), ts(2), 3, "c")
-        ))
+        )
+      )
       .toDF("systemTime", "eventTime", "id", "data")
 
     val curr = sc
@@ -98,10 +104,11 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(3), 4, "x", "d"),
           (ts(4), 5, "y", "e"),
           (ts(5), 6, "z", "f")
-        ))
+        )
+      )
       .toDF("eventTime", "id", "extra", "data")
 
-    val strategy = new LedgerMergeStrategy("id")
+    val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(6))
@@ -113,7 +120,8 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(6), ts(3), 4, "d", "x"),
           (ts(6), ts(4), 5, "e", "y"),
           (ts(6), ts(5), 6, "f", "z")
-        ))
+        )
+      )
       .toDF("systemTime", "eventTime", "id", "data", "extra")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
@@ -127,7 +135,8 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(3), ts(0), 1, "x", "a"),
           (ts(3), ts(1), 2, "y", "b"),
           (ts(3), ts(2), 3, "z", "c")
-        ))
+        )
+      )
       .toDF("systemTime", "eventTime", "id", "extra", "data")
 
     val curr = sc
@@ -139,10 +148,11 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(3), 4, "d"),
           (ts(4), 5, "e"),
           (ts(5), 6, "f")
-        ))
+        )
+      )
       .toDF("eventTime", "id", "data")
 
-    val strategy = new LedgerMergeStrategy("id")
+    val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(6))
@@ -154,7 +164,8 @@ class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
           (ts(6), ts(3), 4, null, "d"),
           (ts(6), ts(4), 5, null, "e"),
           (ts(6), ts(5), 6, null, "f")
-        ))
+        )
+      )
       .toDF("systemTime", "eventTime", "id", "extra", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)

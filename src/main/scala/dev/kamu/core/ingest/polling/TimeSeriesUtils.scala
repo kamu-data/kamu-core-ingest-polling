@@ -28,20 +28,22 @@ object TimeSeriesUtils {
     **/
   def asOf(
     series: DataFrame,
-    pkColumn: String,
+    primaryKey: Seq[String],
     systemTime: Option[Timestamp] = None,
     vocab: DatasetVocabulary = DatasetVocabulary()
   ): DataFrame = {
+    val pk = primaryKey.toVector
+
     def aggAlias(c: String) = "__" + c
 
     val dataColumns = series.columns
-      .filter(_ != pkColumn)
+      .filter(!pk.contains(_))
       .toList
 
     val aggregates = dataColumns
       .map(c => last(c).as(aggAlias(c)))
 
-    val resultColumns = col(pkColumn) :: (
+    val resultColumns = pk.map(col) ++ (
       dataColumns
         .filter(_ != vocab.observationColumn)
         .filter(_ != vocab.systemTimeColumn)
@@ -56,7 +58,7 @@ object TimeSeriesUtils {
         _.filter(col(vocab.systemTimeColumn) <= systemTime.get)
       )
       .orderBy(vocab.systemTimeColumn)
-      .groupBy(pkColumn)
+      .groupBy(pk.map(col): _*)
       .aggv(aggregates: _*)
       .filter(col(aggAlias(vocab.observationColumn)) =!= lit(vocab.obsvRemoved))
       .select(resultColumns: _*)

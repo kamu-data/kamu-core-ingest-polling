@@ -95,7 +95,7 @@ class AppendMergeStrategy(
   * @param pk primary key column name
   */
 class LedgerMergeStrategy(
-  pk: String,
+  pk: Vector[String],
   vocab: DatasetVocabulary = DatasetVocabulary()
 ) extends MergeStrategy {
 
@@ -122,8 +122,8 @@ class LedgerMergeStrategy(
       )
 
     curr
-      .join(prev, curr(pk) === prev(pk), "left_outer")
-      .filter(prev(pk).isNull)
+      .join(prev, pk.map(c => curr(c) <=> prev(c)).reduce(_ && _), "left_outer")
+      .filter(pk.map(c => prev(c).isNull).reduce(_ || _))
       .select(resultColumns: _*)
   }
 
@@ -161,7 +161,7 @@ class LedgerMergeStrategy(
   * @param vocab vocabulary of system column names and values
   */
 class SnapshotMergeStrategy(
-  pk: String,
+  pk: Vector[String],
   modInd: Option[String],
   vocab: DatasetVocabulary = DatasetVocabulary()
 ) extends MergeStrategy {
@@ -250,13 +250,17 @@ class SnapshotMergeStrategy(
     ) :: resultDataColumns
 
     curr
-      .join(prev, prev(pk) === curr(pk), "full_outer")
-      .filter(curr(pk).isNull || prev(pk).isNull || changedPredicate)
+      .join(prev, pk.map(c => prev(c) <=> curr(c)).reduce(_ && _), "full_outer")
+      .filter(
+        pk.map(curr(_).isNull).reduce(_ && _) ||
+          pk.map(prev(_).isNull).reduce(_ && _) ||
+          changedPredicate
+      )
       .withColumn(vocab.systemTimeColumn, lit(systemTime))
       .withColumn(
         vocab.observationColumn,
-        when(prev(pk).isNull, vocab.obsvAdded)
-          .when(curr(pk).isNull, vocab.obsvRemoved)
+        when(pk.map(prev(_).isNull).reduce(_ && _), vocab.obsvAdded)
+          .when(pk.map(curr(_).isNull).reduce(_ && _), vocab.obsvRemoved)
           .otherwise(vocab.obsvChanged)
       )
       .select(resultColumns: _*)

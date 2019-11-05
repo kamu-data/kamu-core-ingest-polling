@@ -75,7 +75,7 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
               format = "csv",
               schema = inputSchema,
               mergeStrategy = Snapshot(
-                primaryKey = "id",
+                primaryKey = Vector("id"),
                 modificationIndicator = Some("version")
               )
             )

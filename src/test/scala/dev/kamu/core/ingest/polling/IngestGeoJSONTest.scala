@@ -73,8 +73,10 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
             RootPollingSource(
               url = inputPath.toUri,
               format = "geojson",
-              mergeStrategy =
-                Snapshot(primaryKey = "id", modificationIndicator = None)
+              mergeStrategy = Snapshot(
+                primaryKey = Vector("id"),
+                modificationIndicator = None
+              )
             )
           )
         ).postLoad()

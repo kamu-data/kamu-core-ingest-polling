@@ -22,7 +22,7 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
       )
       .toDF("id", "name", "data", "version")
 
-    val strategy = new SnapshotMergeStrategy("id", Some("version"))
+    val strategy = new SnapshotMergeStrategy(Vector("id"), Some("version"))
 
     val actual = strategy
       .merge(None, curr, ts(0))
@@ -62,7 +62,7 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
       )
       .toDF("id", "name", "data", "version")
 
-    val strategy = new SnapshotMergeStrategy("id", Some("version"))
+    val strategy = new SnapshotMergeStrategy(Vector("id"), Some("version"))
 
     val actual = strategy.merge(Some(prev), curr, ts(0))
 
@@ -96,7 +96,7 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
       )
       .toDF("id", "name", "data")
 
-    val strategy = new SnapshotMergeStrategy("id", None)
+    val strategy = new SnapshotMergeStrategy(Vector("id"), None)
 
     val actual = strategy
       .merge(Some(prev), curr, ts(0))
@@ -136,7 +136,7 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
       )
       .toDF("id", "name", "data", "version")
 
-    val strategy = new SnapshotMergeStrategy("id", Some("version"))
+    val strategy = new SnapshotMergeStrategy(Vector("id"), Some("version"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(0))
@@ -176,7 +176,7 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
       )
       .toDF("id", "name", "data", "ext", "version")
 
-    val strategy = new SnapshotMergeStrategy("id", Some("version"))
+    val strategy = new SnapshotMergeStrategy(Vector("id"), Some("version"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(0))
@@ -216,7 +216,7 @@ class MergeStrategySnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
       )
       .toDF("id", "name", "data", "version")
 
-    val strategy = new SnapshotMergeStrategy("id", Some("version"))
+    val strategy = new SnapshotMergeStrategy(Vector("id"), Some("version"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(0))

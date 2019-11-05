@@ -30,7 +30,7 @@ class TimeSeriesUtilsTest extends FunSuite with DataFrameSuiteBaseEx {
     val series = testSeries
 
     val actual = TimeSeriesUtils
-      .asOf(series, "id")
+      .asOf(series, Seq("id"))
       .orderBy("id")
 
     val expected = sc
@@ -50,7 +50,7 @@ class TimeSeriesUtilsTest extends FunSuite with DataFrameSuiteBaseEx {
     val series = testSeries
 
     val actual = TimeSeriesUtils
-      .asOf(series, "id", Some(ts(1)))
+      .asOf(series, Seq("id"), Some(ts(1)))
       .orderBy("id")
 
     val expected = sc
@@ -62,6 +62,39 @@ class TimeSeriesUtilsTest extends FunSuite with DataFrameSuiteBaseEx {
         )
       )
       .toDF("id", "name", "data", "lastUpdatedSys")
+
+    assertDataFrameEquals(expected, actual, ignoreNullable = true)
+  }
+
+  test("asOf compound key") {
+    val series = sc
+      .parallelize(
+        Seq(
+          (ts(0), "I", 1, "A", "x"),
+          (ts(0), "I", 1, "B", "y"),
+          (ts(0), "I", 2, "C", "z"),
+          (ts(1), "U", 1, "A", "a"),
+          (ts(1), "U", 1, "B", "b"),
+          (ts(2), "D", 1, "A", "a"),
+          (ts(2), "U", 1, "B", "bb"),
+          (ts(3), "I", 2, "D", "d")
+        )
+      )
+      .toDF("systemTime", "observed", "key", "name", "data")
+
+    val actual = TimeSeriesUtils
+      .asOf(series, Seq("key", "name"))
+      .orderBy("key", "name")
+
+    val expected = sc
+      .parallelize(
+        Seq(
+          (1, "B", "bb", ts(2)),
+          (2, "C", "z", ts(0)),
+          (2, "D", "d", ts(3))
+        )
+      )
+      .toDF("key", "name", "data", "lastUpdatedSys")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
