@@ -8,9 +8,11 @@ import dev.kamu.core.manifests.utils.fs._
 import dev.kamu.core.manifests.{
   Dataset,
   DatasetID,
-  VolumeMap,
+  ExternalSourceFetchUrl,
+  MergeStrategySnapshot,
+  ReaderGeojson,
   RootPollingSource,
-  Snapshot
+  VolumeMap
 }
 import org.apache.hadoop
 import org.apache.hadoop.conf.Configuration
@@ -63,17 +65,17 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
       volumeMap = VolumeMap(
         downloadDir = tempDir.resolve("downloads"),
         checkpointDir = tempDir.resolve("checkpoints"),
-        dataDirRoot = tempDir.resolve("root"),
-        dataDirDeriv = tempDir.resolve("deriv")
+        dataDirRoot = tempDir.resolve("data"),
+        dataDirDeriv = tempDir.resolve("data")
       ),
       datasets = List(
         Dataset(
           id = dsID,
           rootPollingSource = Some(
             RootPollingSource(
-              url = inputPath.toUri,
-              format = "geojson",
-              mergeStrategy = Snapshot(
+              fetch = ExternalSourceFetchUrl(url = inputPath.toUri),
+              read = ReaderGeojson(),
+              merge = MergeStrategySnapshot(
                 primaryKey = Vector("id"),
                 modificationIndicator = None
               )

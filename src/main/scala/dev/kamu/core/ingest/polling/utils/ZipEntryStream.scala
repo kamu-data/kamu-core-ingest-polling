@@ -1,4 +1,4 @@
-package dev.kamu.core.ingest.polling
+package dev.kamu.core.ingest.polling.utils
 
 import java.io.{FilterInputStream, InputStream}
 import java.util.zip.{ZipEntry, ZipInputStream}
@@ -9,8 +9,10 @@ object ZipEntryStream {
     new ZipEntryStream(zipStream, zipStream.getNextEntry)
   }
 
-  def findFirst(inputStream: InputStream,
-                regex: String): Option[ZipEntryStream] = {
+  def findFirst(
+    inputStream: InputStream,
+    regex: String
+  ): Option[ZipEntryStream] = {
     val zipStream = new ZipInputStream(inputStream)
     var entry = zipStream.getNextEntry
     while (entry != null) {

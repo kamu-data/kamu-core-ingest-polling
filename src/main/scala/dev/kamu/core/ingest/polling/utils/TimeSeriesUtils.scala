@@ -1,11 +1,11 @@
-package dev.kamu.core.ingest.polling
+package dev.kamu.core.ingest.polling.utils
 
 import java.sql.Timestamp
 
 import dev.kamu.core.manifests.DatasetVocabulary
-import org.apache.spark.sql.{DataFrame, Row}
+import dev.kamu.core.ingest.polling.utils.DFUtils._
 import org.apache.spark.sql.functions.{col, last, lit}
-import DFUtils._
+import org.apache.spark.sql.{DataFrame, Row}
 
 object TimeSeriesUtils {
 

@@ -8,9 +8,11 @@ import dev.kamu.core.manifests.utils.fs._
 import dev.kamu.core.manifests.{
   Dataset,
   DatasetID,
-  VolumeMap,
+  ExternalSourceFetchUrl,
+  MergeStrategySnapshot,
+  ReaderCsv,
   RootPollingSource,
-  Snapshot
+  VolumeMap
 }
 import org.apache.hadoop
 import org.apache.hadoop.conf.Configuration
@@ -71,10 +73,9 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
           id = dsID,
           rootPollingSource = Some(
             RootPollingSource(
-              url = inputPath.toUri,
-              format = "csv",
-              schema = inputSchema,
-              mergeStrategy = Snapshot(
+              fetch = ExternalSourceFetchUrl(inputPath.toUri),
+              read = ReaderCsv(schema = inputSchema),
+              merge = MergeStrategySnapshot(
                 primaryKey = Vector("id"),
                 modificationIndicator = Some("version")
               )

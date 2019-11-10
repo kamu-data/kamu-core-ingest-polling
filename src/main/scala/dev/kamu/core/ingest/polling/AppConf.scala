@@ -15,7 +15,11 @@ object AppConf {
   import pureconfig.generic.auto._
 
   val configFileName = "poll-config.yaml"
-  val pollCacheFileName = "poll-cache.json"
+  val downloadCheckpointFileName = "download.json"
+  val downloadDataFileName = "downloaded.bz2"
+  val prepCheckpointFileName = "prepare.json"
+  val prepDataFileName = "ready.bz2"
+  val ingestCheckpointFileName = "ingest.json"
 
   val repositoryConfigFile = "repositoryVolumeMap.yaml"
 

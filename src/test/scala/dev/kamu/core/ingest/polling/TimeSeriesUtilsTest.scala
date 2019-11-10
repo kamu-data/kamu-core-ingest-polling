@@ -2,6 +2,7 @@ package dev.kamu.core.ingest.polling
 
 import java.sql.Timestamp
 
+import dev.kamu.core.ingest.polling.utils.TimeSeriesUtils
 import org.scalatest.FunSuite
 
 class TimeSeriesUtilsTest extends FunSuite with DataFrameSuiteBaseEx {

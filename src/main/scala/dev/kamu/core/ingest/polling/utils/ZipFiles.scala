@@ -1,6 +1,7 @@
-package dev.kamu.core.ingest.polling
+package dev.kamu.core.ingest.polling.utils
 
 import java.util.zip.ZipInputStream
+
 import dev.kamu.core.manifests.utils.fs._
 import org.apache.hadoop.fs.{FileSystem, Path}
 
