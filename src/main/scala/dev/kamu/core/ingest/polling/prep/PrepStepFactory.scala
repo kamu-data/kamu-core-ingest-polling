@@ -1,8 +1,6 @@
 package dev.kamu.core.ingest.polling.prep
 
-import java.io.InputStream
-
-import dev.kamu.core.manifests.{PrepStepDecompress, PrepStepKind}
+import dev.kamu.core.manifests.{PrepStepDecompress, PrepStepKind, PrepStepPipe}
 import org.apache.hadoop.fs.FileSystem
 import org.apache.log4j.LogManager
 
@@ -26,6 +24,8 @@ class PrepStepFactory(fileSystem: FileSystem) {
               s"Unknown compression format: ${dc.format}"
             )
         }
+      case pipe: PrepStepPipe =>
+        new ProcessPipeStep(pipe.command)
       case _ =>
         throw new NotImplementedError(s"Unknown prep step: $config")
     }
@@ -33,9 +33,8 @@ class PrepStepFactory(fileSystem: FileSystem) {
 
   def getComposedSteps(
     configs: Seq[PrepStepKind]
-  ): InputStream => InputStream = {
-    val steps = configs.map(getStep)
-    val noop = (i: InputStream) => i
-    steps.foldLeft(noop)((f, step) => f andThen step.prepare)
+  ): PrepStep = {
+    new CompositePrepStep(configs.map(getStep).toVector)
   }
+
 }

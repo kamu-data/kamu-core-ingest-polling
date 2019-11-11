@@ -174,9 +174,8 @@ class Ingest(
             checkpoint = storedCheckpoint.get
           )
         } else {
-          val prepareFun = prepStepFactory.getComposedSteps(source.prepare)
-          val convertFun = conversionStepFactory.getComposedSteps(source.read)
-          val transform = prepareFun andThen convertFun
+          val prepStep = prepStepFactory.getComposedSteps(source.prepare)
+          val convertStep = conversionStepFactory.getComposedSteps(source.read)
 
           val inputStream = fileSystem.open(downloadDataPath)
           val decompressedInStream = new BZip2CompressorInputStream(inputStream)
@@ -186,7 +185,12 @@ class Ingest(
             new BZip2CompressorOutputStream(outputStream)
 
           try {
-            IOUtils.copy(transform(decompressedInStream), compressedOutStream)
+            val preparedInStream = prepStep.prepare(decompressedInStream)
+            val convertedInStream = convertStep.convert(preparedInStream)
+
+            IOUtils.copy(convertedInStream, compressedOutStream)
+
+            prepStep.join()
           } finally {
             decompressedInStream.close()
             compressedOutStream.close()

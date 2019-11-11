@@ -1,7 +1,5 @@
 package dev.kamu.core.ingest.polling.convert
 
-import java.io.InputStream
-
 import dev.kamu.core.manifests.{ReaderGeojson, ReaderKind}
 import org.apache.log4j.LogManager
 
@@ -20,8 +18,8 @@ class ConversionStepFactory {
 
   def getComposedSteps(
     readerConfig: ReaderKind
-  ): InputStream => InputStream = {
-    getStep(readerConfig).convert
+  ): ConversionStep = {
+    getStep(readerConfig)
   }
 
 }
