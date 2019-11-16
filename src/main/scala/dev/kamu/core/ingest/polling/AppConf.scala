@@ -2,65 +2,36 @@ package dev.kamu.core.ingest.polling
 
 import java.io.InputStream
 
-import dev.kamu.core.manifests.{Dataset, Manifest, VolumeMap}
+import dev.kamu.core.manifests.{Dataset, Manifest, Resource}
+import org.apache.hadoop.fs.Path
+
+case class IngestTask(
+  datasetToIngest: Dataset,
+  checkpointsPath: Path,
+  pollCachePath: Path,
+  dataPath: Path
+) extends Resource[IngestTask]
 
 case class AppConf(
-  volumeMap: VolumeMap,
-  datasets: List[Dataset]
-)
+  tasks: Vector[IngestTask]
+) extends Resource[AppConf]
 
 object AppConf {
   import dev.kamu.core.manifests.parsing.pureconfig.yaml
   import yaml.defaults._
   import pureconfig.generic.auto._
 
-  val configFileName = "poll-config.yaml"
-  val downloadCheckpointFileName = "download.json"
-  val downloadDataFileName = "downloaded.bz2"
-  val prepCheckpointFileName = "prepare.json"
-  val prepDataFileName = "ready.bz2"
-  val ingestCheckpointFileName = "ingest.json"
-
-  val repositoryConfigFile = "repositoryVolumeMap.yaml"
+  val configFileName = "pollConfig.yaml"
+  val downloadCheckpointFileName = "download.checkpoint.yaml"
+  val downloadDataFileName = "download.bz2"
+  val prepCheckpointFileName = "prepare.checkpoint.yaml"
+  val prepDataFileName = "prepare.bz2"
+  val ingestCheckpointFileName = "ingest.checkpoint.yaml"
 
   def load(): AppConf = {
-    val datasets = findSources()
-
-    val volumeMap = yaml
-      .load[Manifest[VolumeMap]](
-        getConfigFromResources(repositoryConfigFile)
-      )
+    yaml
+      .load[Manifest[AppConf]](getConfigFromResources(configFileName))
       .content
-
-    val appConfig = AppConf(
-      volumeMap = volumeMap,
-      datasets = datasets
-    )
-
-    appConfig
-  }
-
-  // TODO: This sucks, but searching resources via pattern in Java is a pain
-  private def findSources(
-    index: Int = 0,
-    tail: List[Dataset] = List.empty
-  ): List[Dataset] = {
-    val stream = getClass.getClassLoader.getResourceAsStream(
-      s"dataset_$index.yaml"
-    )
-
-    if (stream == null) {
-      tail.reverse
-    } else {
-      val ds = yaml.load[Manifest[Dataset]](stream).content
-
-      if (ds.rootPollingSource.isEmpty)
-        throw new RuntimeException(
-          s"Expected a root dataset, got ${ds.kind}"
-        )
-
-      findSources(index + 1, ds :: tail)
-    }
   }
 
   private def getConfigFromResources(configFileName: String): InputStream = {

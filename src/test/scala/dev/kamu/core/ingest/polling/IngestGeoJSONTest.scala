@@ -11,8 +11,7 @@ import dev.kamu.core.manifests.{
   ExternalSourceFetchUrl,
   MergeStrategySnapshot,
   ReaderGeojson,
-  RootPollingSource,
-  VolumeMap
+  RootPollingSource
 }
 import org.apache.hadoop
 import org.apache.hadoop.conf.Configuration
@@ -61,27 +60,28 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
 
     writeFile(inputPath, inputData)
 
+    val outputDir = tempDir.resolve("data")
+
     val conf = AppConf(
-      volumeMap = VolumeMap(
-        downloadDir = tempDir.resolve("downloads"),
-        checkpointDir = tempDir.resolve("checkpoints"),
-        dataDirRoot = tempDir.resolve("data"),
-        dataDirDeriv = tempDir.resolve("data")
-      ),
-      datasets = List(
-        Dataset(
-          id = dsID,
-          rootPollingSource = Some(
-            RootPollingSource(
-              fetch = ExternalSourceFetchUrl(url = inputPath.toUri),
-              read = ReaderGeojson(),
-              merge = MergeStrategySnapshot(
-                primaryKey = Vector("id"),
-                modificationIndicator = None
+      tasks = Vector(
+        IngestTask(
+          checkpointsPath = tempDir.resolve("checkpoints"),
+          pollCachePath = tempDir.resolve("poll"),
+          dataPath = outputDir,
+          datasetToIngest = Dataset(
+            id = dsID,
+            rootPollingSource = Some(
+              RootPollingSource(
+                fetch = ExternalSourceFetchUrl(url = inputPath.toUri),
+                read = ReaderGeojson(),
+                merge = MergeStrategySnapshot(
+                  primaryKey = Vector("id"),
+                  modificationIndicator = None
+                )
               )
             )
-          )
-        ).postLoad()
+          ).postLoad()
+        )
       )
     )
 
@@ -93,8 +93,6 @@ class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
     )
 
     ingest.pollAndIngest()
-
-    val outputDir = conf.volumeMap.dataDirRoot.resolve(dsID.toString)
 
     spark.read.parquet(outputDir.toString)
   }

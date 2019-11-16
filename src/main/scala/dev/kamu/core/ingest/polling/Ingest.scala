@@ -58,31 +58,29 @@ class Ingest(
     logger.info(s"Starting ingest")
     logger.info(s"Running with config: $config")
 
-    for (ds <- config.datasets) {
-      logger.info(s"Processing dataset: ${ds.id}")
-
-      val downloadPath = config.volumeMap.downloadDir.resolve(ds.id.toString)
-      val checkpointPath =
-        config.volumeMap.checkpointDir.resolve(ds.id.toString)
+    for (task <- config.tasks) {
+      logger.info(s"Processing dataset: ${task.datasetToIngest.id}")
 
       val downloadCheckpointPath =
-        checkpointPath.resolve(AppConf.downloadCheckpointFileName)
-      val downloadDataPath = downloadPath.resolve(AppConf.downloadDataFileName)
+        task.checkpointsPath.resolve(AppConf.downloadCheckpointFileName)
+      val downloadDataPath =
+        task.pollCachePath.resolve(AppConf.downloadDataFileName)
 
       val prepCheckpointPath =
-        checkpointPath.resolve(AppConf.prepCheckpointFileName)
-      val prepDataPath = downloadPath.resolve(AppConf.prepDataFileName)
+        task.checkpointsPath.resolve(AppConf.prepCheckpointFileName)
+      val prepDataPath = task.pollCachePath.resolve(AppConf.prepDataFileName)
 
       val ingestCheckpointPath =
-        checkpointPath.resolve(AppConf.ingestCheckpointFileName)
-      val ingestDataPath = config.volumeMap.dataDirRoot.resolve(ds.id.toString)
+        task.checkpointsPath.resolve(AppConf.ingestCheckpointFileName)
+      val ingestDataPath = task.dataPath
 
-      val source = ds.rootPollingSource.get
+      val source = task.datasetToIngest.rootPollingSource.get
 
-      if (!fileSystem.exists(downloadPath))
-        fileSystem.mkdirs(downloadPath)
+      Seq(task.pollCachePath, task.checkpointsPath, task.dataPath.getParent)
+        .filter(!fileSystem.exists(_))
+        .foreach(fileSystem.mkdirs)
 
-      logger.info(s"Stage: polling ")
+      logger.info(s"Stage: polling")
 
       val downloadResult = maybeDownload(
         source,
@@ -109,9 +107,9 @@ class Ingest(
       )
 
       if (ingestResult.wasUpToDate) {
-        logger.info(s"Dataset is up to date: ${ds.id}")
+        logger.info(s"Dataset is up to date: ${task.datasetToIngest.id}")
       } else {
-        logger.info(s"Dataset was updated: ${ds.id}")
+        logger.info(s"Dataset was updated: ${task.datasetToIngest.id}")
       }
     }
 
@@ -126,7 +124,9 @@ class Ingest(
     downloadExecutor.execute(
       checkpointPath = downloadCheckpointPath,
       execute = storedCheckpoint => {
-        if (storedCheckpoint.isDefined && !storedCheckpoint.get.isCacheable) {
+        if (storedCheckpoint.isDefined
+            && !storedCheckpoint.get.isCacheable
+            && fileSystem.exists(downloadDataPath)) {
           logger.warn(s"Skipping uncachable source")
           ExecutionResult(wasUpToDate = true, checkpoint = storedCheckpoint.get)
         } else {
@@ -168,7 +168,9 @@ class Ingest(
     prepExecutor.execute(
       checkpointPath = prepCheckpointPath,
       execute = storedCheckpoint => {
-        if (storedCheckpoint.isDefined && storedCheckpoint.get.downloadTimestamp == downloadCheckpoint.lastDownloaded) {
+        if (storedCheckpoint.isDefined
+            && storedCheckpoint.get.downloadTimestamp == downloadCheckpoint.lastDownloaded
+            && fileSystem.exists(prepDataPath)) {
           ExecutionResult(
             wasUpToDate = true,
             checkpoint = storedCheckpoint.get
@@ -218,7 +220,9 @@ class Ingest(
     ingestExecutor.execute(
       checkpointPath = ingestCheckpointPath,
       execute = storedCheckpoint => {
-        if (storedCheckpoint.isDefined && storedCheckpoint.get.prepTimestamp == prepCheckpoint.lastPrepared) {
+        if (storedCheckpoint.isDefined
+            && storedCheckpoint.get.prepTimestamp == prepCheckpoint.lastPrepared
+            && fileSystem.exists(ingestDataPath)) {
           ExecutionResult(
             wasUpToDate = true,
             checkpoint = storedCheckpoint.get

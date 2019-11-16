@@ -11,8 +11,7 @@ import dev.kamu.core.manifests.{
   ExternalSourceFetchUrl,
   MergeStrategySnapshot,
   ReaderCsv,
-  RootPollingSource,
-  VolumeMap
+  RootPollingSource
 }
 import org.apache.hadoop
 import org.apache.hadoop.conf.Configuration
@@ -61,27 +60,28 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
 
     writeFile(inputPath, inputData)
 
+    val outputDir = tempDir.resolve("data")
+
     val conf = AppConf(
-      volumeMap = VolumeMap(
-        downloadDir = tempDir.resolve("downloads"),
-        checkpointDir = tempDir.resolve("checkpoints"),
-        dataDirRoot = tempDir.resolve("root"),
-        dataDirDeriv = tempDir.resolve("deriv")
-      ),
-      datasets = List(
-        Dataset(
-          id = dsID,
-          rootPollingSource = Some(
-            RootPollingSource(
-              fetch = ExternalSourceFetchUrl(inputPath.toUri),
-              read = ReaderCsv(schema = inputSchema),
-              merge = MergeStrategySnapshot(
-                primaryKey = Vector("id"),
-                modificationIndicator = Some("version")
+      tasks = Vector(
+        IngestTask(
+          checkpointsPath = tempDir.resolve("checkpoints"),
+          pollCachePath = tempDir.resolve("poll"),
+          dataPath = outputDir,
+          datasetToIngest = Dataset(
+            id = dsID,
+            rootPollingSource = Some(
+              RootPollingSource(
+                fetch = ExternalSourceFetchUrl(inputPath.toUri),
+                read = ReaderCsv(schema = inputSchema),
+                merge = MergeStrategySnapshot(
+                  primaryKey = Vector("id"),
+                  modificationIndicator = Some("version")
+                )
               )
             )
-          )
-        ).postLoad()
+          ).postLoad()
+        )
       )
     )
 
@@ -93,8 +93,6 @@ class IngestSnapshotTest extends FunSuite with DataFrameSuiteBaseEx {
     )
 
     ingest.pollAndIngest()
-
-    val outputDir = conf.volumeMap.dataDirRoot.resolve(dsID.toString)
 
     spark.read.parquet(outputDir.toString)
   }
