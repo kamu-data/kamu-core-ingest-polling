@@ -10,10 +10,11 @@ package dev.kamu.core.ingest.polling
 
 import java.sql.Timestamp
 
+import dev.kamu.core.utils.test.KamuDataFrameSuite
 import dev.kamu.core.ingest.polling.merge.LedgerMergeStrategy
 import org.scalatest.FunSuite
 
-class MergeStrategyLedgerTest extends FunSuite with DataFrameSuiteBaseEx {
+class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
   import spark.implicits._
 
   protected override val enableHiveSupport = false

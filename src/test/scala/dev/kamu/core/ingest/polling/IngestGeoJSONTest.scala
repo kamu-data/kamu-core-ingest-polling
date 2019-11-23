@@ -12,7 +12,8 @@ import java.io.PrintWriter
 import java.sql.Timestamp
 import java.util.UUID
 
-import dev.kamu.core.manifests.utils.fs._
+import dev.kamu.core.utils.fs._
+import dev.kamu.core.utils.test.KamuDataFrameSuite
 import dev.kamu.core.manifests.{
   Dataset,
   DatasetID,
@@ -27,7 +28,7 @@ import org.apache.hadoop.fs.Path
 import org.apache.spark.sql.functions
 import org.scalatest.FunSuite
 
-class IngestGeoJSONTest extends FunSuite with DataFrameSuiteBaseEx {
+class IngestGeoJSONTest extends FunSuite with KamuDataFrameSuite {
   import spark.implicits._
   protected override val enableHiveSupport = false
 
