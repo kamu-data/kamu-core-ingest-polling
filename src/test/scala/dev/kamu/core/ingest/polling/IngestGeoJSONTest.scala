@@ -83,10 +83,7 @@ class IngestGeoJSONTest extends FunSuite with KamuDataFrameSuite {
               RootPollingSource(
                 fetch = ExternalSourceFetchUrl(url = inputPath.toUri),
                 read = ReaderGeojson(),
-                merge = MergeStrategySnapshot(
-                  primaryKey = Vector("id"),
-                  modificationIndicator = None
-                )
+                merge = MergeStrategySnapshot(primaryKey = Vector("id"))
               )
             )
           ).postLoad()

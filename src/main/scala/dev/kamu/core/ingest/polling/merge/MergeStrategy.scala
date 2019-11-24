@@ -22,8 +22,8 @@ object MergeStrategy {
         new LedgerMergeStrategy(c.primaryKey)
       case c: manifests.MergeStrategySnapshot =>
         new SnapshotMergeStrategy(
-          pk = c.primaryKey,
-          modInd = c.modificationIndicator
+          primaryKey = c.primaryKey,
+          compareColumns = c.compareColumns
         )
       case _ =>
         throw new NotImplementedError(s"Unsupported strategy: $kind")

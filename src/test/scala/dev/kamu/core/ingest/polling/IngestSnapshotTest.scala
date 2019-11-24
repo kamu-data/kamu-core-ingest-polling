@@ -85,7 +85,7 @@ class IngestSnapshotTest extends FunSuite with KamuDataFrameSuite {
                 read = ReaderCsv(schema = inputSchema),
                 merge = MergeStrategySnapshot(
                   primaryKey = Vector("id"),
-                  modificationIndicator = Some("version")
+                  compareColumns = Vector("version")
                 )
               )
             )

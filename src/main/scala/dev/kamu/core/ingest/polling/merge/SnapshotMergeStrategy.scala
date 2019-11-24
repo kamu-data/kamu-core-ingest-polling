@@ -33,22 +33,24 @@ import org.apache.spark.sql.functions.{col, lit, when}
   * This strategy relies on a user-specified primary key column to
   * correlate the rows between two snapshots.
   *
-  * If the data contains a column that is guaranteed to change whenever
-  * any of the data columns changes (for example this can be a last
-  * modification timestamp, an incremental version, or a data hash), then
-  * it can be specified as modification indicator to speed up the detection of
+  * To determine if the row has changed between two snapshots all columns are
+  * compared one by one. Optionally the set of columns to compare can be
+  * specified explicitly. If the data contains a column that is guaranteed to
+  * change whenever any of the data columns changes (for example a modification
+  * timestamp, an incremental version, or a data hash) - using it as a
+  * modification indicator will significantly speed up the detection of
   * modified rows.
   *
   * This strategy will always preserve all columns from existing and
   * new snapshots, so the set of columns can only grow.
   *
-  * @param pk     primary key column name
-  * @param modInd column that always changes when the rest of the row is modified
-  * @param vocab  vocabulary of system column names and values
+  * @param primaryKey     primary key column names
+  * @param compareColumns columns to compare to determine if a row has changed
+  * @param vocab          vocabulary of system column names and values
   */
 class SnapshotMergeStrategy(
-  pk: Vector[String],
-  modInd: Option[String],
+  primaryKey: Vector[String],
+  compareColumns: Vector[String] = Vector.empty,
   vocab: DatasetVocabulary = DatasetVocabulary()
 ) extends MergeStrategy {
 
@@ -88,7 +90,7 @@ class SnapshotMergeStrategy(
   ): DataFrame = {
     val prev = if (prevSeries.isDefined) {
       TimeSeriesUtils
-        .asOf(prevSeries.get, pk)
+        .asOf(prevSeries.get, primaryKey)
         .drop(vocab.lastUpdatedTimeSystemColumn)
     } else {
       TimeSeriesUtils.empty(curr)
@@ -96,27 +98,26 @@ class SnapshotMergeStrategy(
 
     val combinedDataColumnNames = (prev.columns ++ curr.columns).distinct.toList
 
-    val changedPredicate = if (modInd.isDefined) {
-      curr(modInd.get) =!= prev(modInd.get)
-    } else {
-      // We consider data changed when
-      // either both columns exist and have different values
-      // or column disappears while having non-null value
-      // or column is added with non-null value
-      combinedDataColumnNames
-        .map(columnName => {
-          val pc = prev.getColumn(columnName)
-          val cc = curr.getColumn(columnName)
-          if (pc.isDefined && cc.isDefined) {
-            pc.get =!= cc.get
-          } else if (pc.isDefined) {
-            pc.get.isNotNull
-          } else {
-            cc.get.isNotNull
-          }
-        })
-        .foldLeft(lit(false))((a, b) => a || b)
-    }
+    val columnsToCompare =
+      if (compareColumns.nonEmpty) compareColumns else combinedDataColumnNames
+
+    // We consider data changed when
+    // either both columns exist and have different values
+    // or column disappears while having non-null value
+    // or column is added with non-null value
+    val changedPredicate = columnsToCompare
+      .map(columnName => {
+        val pc = prev.getColumn(columnName)
+        val cc = curr.getColumn(columnName)
+        if (pc.isDefined && cc.isDefined) {
+          pc.get =!= cc.get
+        } else if (pc.isDefined) {
+          pc.get.isNotNull
+        } else {
+          cc.get.isNotNull
+        }
+      })
+      .foldLeft(lit(false))((a, b) => a || b)
 
     def columnOrNull(df: DataFrame, name: String) =
       df.getColumn(name).getOrElse(lit(null))
@@ -136,17 +137,26 @@ class SnapshotMergeStrategy(
     ) :: resultDataColumns
 
     curr
-      .join(prev, pk.map(c => prev(c) <=> curr(c)).reduce(_ && _), "full_outer")
+      .join(
+        prev,
+        primaryKey.map(c => prev(c) <=> curr(c)).reduce(_ && _),
+        "full_outer"
+      )
       .filter(
-        pk.map(curr(_).isNull).reduce(_ && _) ||
-          pk.map(prev(_).isNull).reduce(_ && _) ||
+        primaryKey.map(curr(_).isNull).reduce(_ && _) ||
+          primaryKey.map(prev(_).isNull).reduce(_ && _) ||
           changedPredicate
       )
       .withColumn(vocab.systemTimeColumn, lit(systemTime))
       .withColumn(
         vocab.observationColumn,
-        when(pk.map(prev(_).isNull).reduce(_ && _), vocab.obsvAdded)
-          .when(pk.map(curr(_).isNull).reduce(_ && _), vocab.obsvRemoved)
+        when(
+          primaryKey.map(prev(_).isNull).reduce(_ && _),
+          vocab.obsvAdded
+        ).when(
+            primaryKey.map(curr(_).isNull).reduce(_ && _),
+            vocab.obsvRemoved
+          )
           .otherwise(vocab.obsvChanged)
       )
       .select(resultColumns: _*)
