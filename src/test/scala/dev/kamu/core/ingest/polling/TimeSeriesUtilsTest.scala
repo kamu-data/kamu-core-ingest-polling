@@ -17,8 +17,6 @@ import org.scalatest.FunSuite
 class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
   import spark.implicits._
 
-  protected override val enableHiveSupport = false
-
   def ts(milis: Long) = new Timestamp(milis)
 
   def testSeries =

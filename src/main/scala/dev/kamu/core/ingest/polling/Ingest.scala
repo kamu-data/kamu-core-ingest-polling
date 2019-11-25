@@ -30,6 +30,7 @@ import yaml.defaults._
 import pureconfig.generic.auto._
 import dev.kamu.core.utils.fs._
 import dev.kamu.core.manifests._
+import dev.kamu.core.utils.TemplateEngine
 import org.apache.commons.compress.compressors.bzip2.{
   BZip2CompressorInputStream,
   BZip2CompressorOutputStream
@@ -61,6 +62,7 @@ class Ingest(
   private val ingestExecutor =
     new CheckpointingExecutor[IngestCheckpoint](fileSystem)
   private lazy val sparkSession = getSparkSession()
+  private lazy val templateEngine = new TemplateEngine()
 
   def pollAndIngest(): Unit = {
     logger.info(s"Starting ingest")
@@ -68,6 +70,8 @@ class Ingest(
 
     for (task <- config.tasks) {
       logger.info(s"Processing dataset: ${task.datasetToIngest.id}")
+
+      val source = prepareSource(task.datasetToIngest)
 
       val downloadCheckpointPath =
         task.checkpointsPath.resolve(AppConf.downloadCheckpointFileName)
@@ -81,8 +85,6 @@ class Ingest(
       val ingestCheckpointPath =
         task.checkpointsPath.resolve(AppConf.ingestCheckpointFileName)
       val ingestDataPath = task.dataPath
-
-      val source = task.datasetToIngest.rootPollingSource.get
 
       Seq(task.pollCachePath, task.checkpointsPath, task.dataPath.getParent)
         .filter(!fileSystem.exists(_))
@@ -122,6 +124,32 @@ class Ingest(
     }
 
     logger.info(s"Finished ingest run")
+  }
+
+  def prepareSource(
+    dataset: dev.kamu.core.manifests.Dataset
+  ): RootPollingSource = {
+    val src = dataset.rootPollingSource.get
+
+    val context: Map[String, String] = src.fetch match {
+      case s: ExternalSourceFetchUrl =>
+        Map("source.url" -> s.url.toString)
+      case _ =>
+        Map.empty
+    }
+
+    src.copy(
+      preprocess = src.preprocess.map(
+        step => step.copy(query = renderSQLTemplate(step.query, context))
+      )
+    )
+  }
+
+  def renderSQLTemplate(sql: String, context: Map[String, String]): String = {
+    val newSql = templateEngine.render(sql, context)
+    if (newSql != sql)
+      logger.info(s"Templating SQL query.\nSource:\n$sql\nResult:\n$newSql")
+    newSql
   }
 
   def maybeDownload(
