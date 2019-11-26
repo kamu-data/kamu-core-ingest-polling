@@ -8,8 +8,8 @@
 
 package dev.kamu.core.ingest.polling.poll
 
-import dev.kamu.core.manifests.{ExternalSourceFetchUrl, ExternalSourceKind}
-import org.apache.hadoop.fs.FileSystem
+import dev.kamu.core.manifests.{CachingKind, ExternalSourceKind}
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
 
 class SourceFactory(fileSystem: FileSystem) {
@@ -17,20 +17,33 @@ class SourceFactory(fileSystem: FileSystem) {
 
   def getSource(kind: ExternalSourceKind): CacheableSource = {
     kind match {
-      case fetch: ExternalSourceFetchUrl =>
+      case fetch: ExternalSourceKind.FetchUrl =>
         fetch.url.getScheme match {
           case "http" | "https" =>
             new HTTPSource(fetch.url)
           case "ftp" =>
             new FTPSource(fetch.url)
           case "gs" =>
-            new FileSystemSource(fileSystem, fetch.url)
+            new FileSystemSource(fileSystem, new Path(fetch.url))
           case "hdfs" | "file" | null =>
             // TODO: restrict allowed source paths for security
-            new FileSystemSource(fileSystem, fetch.url)
+            new FileSystemSource(fileSystem, new Path(fetch.url))
           case _ =>
             throw new NotImplementedError(s"Unsupported source: ${fetch.url}")
         }
+      case glob: ExternalSourceKind.FetchFilesGlob =>
+        new FileSystemGlobSource(fileSystem, glob.path)
+    }
+  }
+
+  def getCachingBehavior(kind: ExternalSourceKind): CachingBehavior = {
+    val cacheSettings = kind match {
+      case url: ExternalSourceKind.FetchUrl        => url.cache
+      case glob: ExternalSourceKind.FetchFilesGlob => glob.cache
+    }
+    cacheSettings match {
+      case _: CachingKind.Default => new CachingBehaviorDefault()
+      case _: CachingKind.Forever => new CachingBehaviorForever()
     }
   }
 }

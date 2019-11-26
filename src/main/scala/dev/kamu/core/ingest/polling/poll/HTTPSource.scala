@@ -26,15 +26,22 @@ class HTTPSource(url: URI) extends CacheableSource {
   )
 
   override def maybeDownload(
-    cacheInfo: Option[DownloadCheckpoint],
+    checkpoint: Option[DownloadCheckpoint],
+    cachingBehavior: CachingBehavior,
     handler: InputStream => Unit
   ): ExecutionResult[DownloadCheckpoint] = {
+    if (!cachingBehavior.shouldDownload(checkpoint))
+      return ExecutionResult(
+        wasUpToDate = true,
+        checkpoint = checkpoint.get
+      )
+
     var request = Http(url.toString)
       .timeout(connTimeoutMs = 30 * 1000, readTimeoutMs = 30 * 1000)
       .method("GET")
 
-    if (cacheInfo.isDefined) {
-      val ci = cacheInfo.get
+    if (checkpoint.isDefined) {
+      val ci = checkpoint.get.asInstanceOf[SimpleDownloadCheckpoint]
 
       if (ci.eTag.isDefined)
         request = request
@@ -60,7 +67,7 @@ class HTTPSource(url: URI) extends CacheableSource {
       case 200 =>
         ExecutionResult(
           wasUpToDate = false,
-          checkpoint = DownloadCheckpoint(
+          checkpoint = SimpleDownloadCheckpoint(
             lastModified = response
               .header("LastModified")
               .map(
@@ -74,7 +81,7 @@ class HTTPSource(url: URI) extends CacheableSource {
           )
         )
       case 304 =>
-        ExecutionResult(wasUpToDate = true, cacheInfo.get)
+        ExecutionResult(wasUpToDate = true, checkpoint.get)
       case _ =>
         throw new RuntimeException(s"Request failed: ${response.statusLine}")
     }

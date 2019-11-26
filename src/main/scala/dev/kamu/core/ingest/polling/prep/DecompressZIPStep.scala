@@ -12,9 +12,9 @@ import java.io.InputStream
 import java.util.regex.Pattern
 
 import dev.kamu.core.ingest.polling.utils.ZipEntryStream
-import dev.kamu.core.manifests.PrepStepDecompress
+import dev.kamu.core.manifests.PrepStepKind
 
-class DecompressZIPStep(config: PrepStepDecompress) extends PrepStep {
+class DecompressZIPStep(config: PrepStepKind.Decompress) extends PrepStep {
   override def prepare(inputStream: InputStream): InputStream = {
     val subPathRegex = config.subPathRegex.orElse(
       config.subPath.map(p => Pattern.quote(p.toString))

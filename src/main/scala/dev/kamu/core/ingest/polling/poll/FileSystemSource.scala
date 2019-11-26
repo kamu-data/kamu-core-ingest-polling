@@ -15,33 +15,40 @@ import java.time.Instant
 import dev.kamu.core.ingest.polling.utils.ExecutionResult
 import org.apache.hadoop.fs.{FileSystem, Path}
 
-class FileSystemSource(fileSystem: FileSystem, url: URI)
+class FileSystemSource(fileSystem: FileSystem, path: Path)
     extends CacheableSource {
 
-  override def sourceID: String = url.toString
+  override def sourceID: String = path.toString
 
   override def maybeDownload(
-    cacheInfo: Option[DownloadCheckpoint],
+    checkpoint: Option[DownloadCheckpoint],
+    cachingBehavior: CachingBehavior,
     handler: InputStream => Unit
   ): ExecutionResult[DownloadCheckpoint] = {
-    logger.info(s"FS read $url")
+    if (!cachingBehavior.shouldDownload(checkpoint))
+      return ExecutionResult(
+        wasUpToDate = true,
+        checkpoint = checkpoint.get
+      )
 
-    val sourcePath = new Path(url)
-    val fs = sourcePath.getFileSystem(fileSystem.getConf)
+    logger.info(s"FS stat $path")
+    val fs = path.getFileSystem(fileSystem.getConf)
 
     val lastModified =
-      Instant.ofEpochMilli(fs.getFileStatus(sourcePath).getModificationTime)
+      Instant.ofEpochMilli(fs.getFileStatus(path).getModificationTime)
 
-    val needsPull = cacheInfo
+    val needsPull = checkpoint
+      .map(_.asInstanceOf[SimpleDownloadCheckpoint])
       .flatMap(_.lastModified)
       .forall(lastModified.compareTo(_) > 0)
 
     if (needsPull) {
-      handler(fs.open(sourcePath))
+      logger.info(s"FS reading $path")
+      handler(fs.open(path))
 
       ExecutionResult(
         wasUpToDate = false,
-        checkpoint = DownloadCheckpoint(
+        checkpoint = SimpleDownloadCheckpoint(
           lastDownloaded = Instant.now(),
           lastModified = Some(lastModified)
         )
@@ -49,7 +56,7 @@ class FileSystemSource(fileSystem: FileSystem, url: URI)
     } else {
       ExecutionResult(
         wasUpToDate = true,
-        checkpoint = cacheInfo.get
+        checkpoint = checkpoint.get
       )
     }
   }

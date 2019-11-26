@@ -113,8 +113,10 @@ class SnapshotMergeStrategy(
           pc.get =!= cc.get
         } else if (pc.isDefined) {
           pc.get.isNotNull
-        } else {
+        } else if (cc.isDefined) {
           cc.get.isNotNull
+        } else {
+          throw new RuntimeException(s"Column does not exist: $columnName")
         }
       })
       .foldLeft(lit(false))((a, b) => a || b)

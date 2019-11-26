@@ -18,8 +18,11 @@ trait CacheableSource {
 
   def sourceID: String
 
+  def canProduceMultipleResults = false
+
   def maybeDownload(
-    cacheInfo: Option[DownloadCheckpoint],
+    checkpoint: Option[DownloadCheckpoint],
+    cachingBehavior: CachingBehavior,
     handler: InputStream => Unit
   ): ExecutionResult[DownloadCheckpoint]
 }

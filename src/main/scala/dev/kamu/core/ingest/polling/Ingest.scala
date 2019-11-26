@@ -17,7 +17,12 @@ import dev.kamu.core.ingest.polling.convert.{
   IngestCheckpoint
 }
 import dev.kamu.core.ingest.polling.merge.MergeStrategy
-import dev.kamu.core.ingest.polling.poll.{DownloadCheckpoint, SourceFactory}
+import dev.kamu.core.ingest.polling.poll.{
+  CacheableSource,
+  CachingBehavior,
+  DownloadCheckpoint,
+  SourceFactory
+}
 import dev.kamu.core.ingest.polling.prep.{PrepCheckpoint, PrepStepFactory}
 import dev.kamu.core.ingest.polling.utils.DFUtils._
 import dev.kamu.core.ingest.polling.utils.{
@@ -25,11 +30,15 @@ import dev.kamu.core.ingest.polling.utils.{
   ExecutionResult,
   ZipFiles
 }
+import dev.kamu.core.manifests.{
+  ExternalSourceKind,
+  ReaderKind,
+  RootPollingSource
+}
 import dev.kamu.core.manifests.parsing.pureconfig.yaml
 import yaml.defaults._
 import pureconfig.generic.auto._
 import dev.kamu.core.utils.fs._
-import dev.kamu.core.manifests._
 import dev.kamu.core.utils.TemplateEngine
 import org.apache.commons.compress.compressors.bzip2.{
   BZip2CompressorInputStream,
@@ -71,19 +80,21 @@ class Ingest(
     for (task <- config.tasks) {
       logger.info(s"Processing dataset: ${task.datasetToIngest.id}")
 
-      val source = prepareSource(task.datasetToIngest)
+      val source = prepareSource(task.datasetToIngest.rootPollingSource.get)
 
-      val downloadCheckpointPath =
-        task.checkpointsPath.resolve(AppConf.downloadCheckpointFileName)
-      val downloadDataPath =
-        task.pollCachePath.resolve(AppConf.downloadDataFileName)
+      val externalSource = sourceFactory.getSource(source.fetch)
+      val cachingBehavior = sourceFactory.getCachingBehavior(source.fetch)
 
-      val prepCheckpointPath =
-        task.checkpointsPath.resolve(AppConf.prepCheckpointFileName)
-      val prepDataPath = task.pollCachePath.resolve(AppConf.prepDataFileName)
-
-      val ingestCheckpointPath =
-        task.checkpointsPath.resolve(AppConf.ingestCheckpointFileName)
+      val downloadCheckpointPath = task.checkpointsPath
+        .resolve(AppConf.downloadCheckpointFileName)
+      val downloadDataPath = task.pollCachePath
+        .resolve(AppConf.downloadDataFileName)
+      val prepCheckpointPath = task.checkpointsPath
+        .resolve(AppConf.prepCheckpointFileName)
+      val prepDataPath = task.pollCachePath
+        .resolve(AppConf.prepDataFileName)
+      val ingestCheckpointPath = task.checkpointsPath
+        .resolve(AppConf.ingestCheckpointFileName)
       val ingestDataPath = task.dataPath
 
       Seq(task.pollCachePath, task.checkpointsPath, task.dataPath.getParent)
@@ -92,54 +103,58 @@ class Ingest(
 
       logger.info(s"Stage: polling")
 
-      val downloadResult = maybeDownload(
-        source,
-        downloadCheckpointPath,
-        downloadDataPath
-      )
+      // Some sources can produce multiple results and should be polled multiple times
+      var sourceExhausted = false
+      while (!sourceExhausted) {
+        val downloadResult = maybeDownload(
+          source,
+          externalSource,
+          cachingBehavior,
+          downloadCheckpointPath,
+          downloadDataPath
+        )
 
-      logger.info(s"Stage: prep")
-      val prepResult = maybePrepare(
-        source,
-        downloadDataPath,
-        downloadResult.checkpoint,
-        prepCheckpointPath,
-        prepDataPath
-      )
+        sourceExhausted = downloadResult.wasUpToDate || !externalSource.canProduceMultipleResults
 
-      logger.info(s"Stage: ingest")
-      val ingestResult = maybeIngest(
-        source,
-        prepResult.checkpoint,
-        prepDataPath,
-        ingestCheckpointPath,
-        ingestDataPath
-      )
+        logger.info(s"Stage: prep")
+        val prepResult = maybePrepare(
+          source,
+          downloadDataPath,
+          downloadResult.checkpoint,
+          prepCheckpointPath,
+          prepDataPath
+        )
 
-      if (ingestResult.wasUpToDate) {
-        logger.info(s"Dataset is up to date: ${task.datasetToIngest.id}")
-      } else {
-        logger.info(s"Dataset was updated: ${task.datasetToIngest.id}")
+        logger.info(s"Stage: ingest")
+        val ingestResult = maybeIngest(
+          source,
+          prepResult.checkpoint,
+          prepDataPath,
+          ingestCheckpointPath,
+          ingestDataPath
+        )
+
+        if (ingestResult.wasUpToDate) {
+          logger.info(s"Dataset is up to date: ${task.datasetToIngest.id}")
+        } else {
+          logger.info(s"Dataset was updated: ${task.datasetToIngest.id}")
+        }
       }
     }
 
     logger.info(s"Finished ingest run")
   }
 
-  def prepareSource(
-    dataset: dev.kamu.core.manifests.Dataset
-  ): RootPollingSource = {
-    val src = dataset.rootPollingSource.get
-
-    val context: Map[String, String] = src.fetch match {
-      case s: ExternalSourceFetchUrl =>
+  def prepareSource(source: RootPollingSource): RootPollingSource = {
+    val context: Map[String, String] = source.fetch match {
+      case s: ExternalSourceKind.FetchUrl =>
         Map("source.url" -> s.url.toString)
       case _ =>
         Map.empty
     }
 
-    src.copy(
-      preprocess = src.preprocess.map(
+    source.copy(
+      preprocess = source.preprocess.map(
         step => step.copy(query = renderSQLTemplate(step.query, context))
       )
     )
@@ -147,48 +162,43 @@ class Ingest(
 
   def renderSQLTemplate(sql: String, context: Map[String, String]): String = {
     val newSql = templateEngine.render(sql, context)
-    if (newSql != sql)
+    if (newSql != sql) {
       logger.info(s"Templating SQL query.\nSource:\n$sql\nResult:\n$newSql")
+    }
     newSql
   }
 
   def maybeDownload(
     source: RootPollingSource,
+    externalSource: CacheableSource,
+    cachingBehavior: CachingBehavior,
     downloadCheckpointPath: Path,
     downloadDataPath: Path
   ): ExecutionResult[DownloadCheckpoint] = {
     downloadExecutor.execute(
       checkpointPath = downloadCheckpointPath,
       execute = storedCheckpoint => {
-        if (storedCheckpoint.isDefined
-            && !storedCheckpoint.get.isCacheable
-            && fileSystem.exists(downloadDataPath)) {
-          logger.warn(s"Skipping uncachable source")
-          ExecutionResult(wasUpToDate = true, checkpoint = storedCheckpoint.get)
-        } else {
-          val dataSource = sourceFactory.getSource(source.fetch)
-
-          val downloadResult = dataSource.maybeDownload(
-            storedCheckpoint,
-            body => {
-              val outputStream = fileSystem.create(downloadDataPath, true)
-              val compressedStream =
-                new BZip2CompressorOutputStream(outputStream)
-              try {
-                IOUtils.copy(body, compressedStream)
-              } finally {
-                compressedStream.close()
-              }
+        val downloadResult = externalSource.maybeDownload(
+          storedCheckpoint,
+          cachingBehavior,
+          body => {
+            val outputStream = fileSystem.create(downloadDataPath, true)
+            val compressedStream =
+              new BZip2CompressorOutputStream(outputStream)
+            try {
+              IOUtils.copy(body, compressedStream)
+            } finally {
+              compressedStream.close()
             }
+          }
+        )
+
+        if (!downloadResult.checkpoint.isCacheable)
+          logger.warn(
+            "Data source is uncacheable - data will not be updated in future."
           )
 
-          if (!downloadResult.checkpoint.isCacheable)
-            logger.warn(
-              "Data source is uncacheable - data will not be updated in future."
-            )
-
-          downloadResult
-        }
+        downloadResult
       }
     )
   }
@@ -205,8 +215,7 @@ class Ingest(
       checkpointPath = prepCheckpointPath,
       execute = storedCheckpoint => {
         if (storedCheckpoint.isDefined
-            && storedCheckpoint.get.downloadTimestamp == downloadCheckpoint.lastDownloaded
-            && fileSystem.exists(prepDataPath)) {
+            && storedCheckpoint.get.downloadTimestamp == downloadCheckpoint.lastDownloaded) {
           ExecutionResult(
             wasUpToDate = true,
             checkpoint = storedCheckpoint.get
@@ -257,8 +266,7 @@ class Ingest(
       checkpointPath = ingestCheckpointPath,
       execute = storedCheckpoint => {
         if (storedCheckpoint.isDefined
-            && storedCheckpoint.get.prepTimestamp == prepCheckpoint.lastPrepared
-            && fileSystem.exists(ingestDataPath)) {
+            && storedCheckpoint.get.prepTimestamp == prepCheckpoint.lastPrepared) {
           ExecutionResult(
             wasUpToDate = true,
             checkpoint = storedCheckpoint.get
@@ -294,9 +302,9 @@ class Ingest(
     )
 
     val reader = source.read match {
-      case _: ReaderShapefile =>
+      case _: ReaderKind.Shapefile =>
         readShapefile _
-      case _: ReaderGeojson =>
+      case _: ReaderKind.Geojson =>
         readGeoJSON _
       case _ =>
         readGeneric _
@@ -317,7 +325,7 @@ class Ingest(
     source: RootPollingSource,
     filePath: Path
   ): DataFrame = {
-    val fmt = source.read.asGeneric().asInstanceOf[ReaderGeneric]
+    val fmt = source.read.asGeneric().asInstanceOf[ReaderKind.Generic]
     val reader = spark.read
 
     if (fmt.schema.nonEmpty)
@@ -335,7 +343,7 @@ class Ingest(
     source: RootPollingSource,
     filePath: Path
   ): DataFrame = {
-    val fmt = source.read.asInstanceOf[ReaderShapefile]
+    val fmt = source.read.asInstanceOf[ReaderKind.Shapefile]
 
     val extractedPath = filePath.getParent.resolve("shapefile")
 

@@ -20,9 +20,16 @@ class FTPSource(url: URI) extends CacheableSource {
   override def sourceID: String = url.toString
 
   override def maybeDownload(
-    cacheInfo: Option[DownloadCheckpoint],
+    checkpoint: Option[DownloadCheckpoint],
+    cachingBehavior: CachingBehavior,
     handler: InputStream => Unit
   ): ExecutionResult[DownloadCheckpoint] = {
+    if (!cachingBehavior.shouldDownload(checkpoint))
+      return ExecutionResult(
+        wasUpToDate = true,
+        checkpoint = checkpoint.get
+      )
+
     logger.info(s"FTP request $url")
 
     val client = new FTPClient()
@@ -42,7 +49,7 @@ class FTPSource(url: URI) extends CacheableSource {
 
     ExecutionResult(
       wasUpToDate = false,
-      checkpoint = DownloadCheckpoint(lastDownloaded = Instant.now())
+      checkpoint = SimpleDownloadCheckpoint(lastDownloaded = Instant.now())
     )
   }
 }

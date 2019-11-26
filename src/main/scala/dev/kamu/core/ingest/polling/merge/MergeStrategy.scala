@@ -16,11 +16,11 @@ import org.apache.spark.sql.DataFrame
 object MergeStrategy {
   def apply(kind: manifests.MergeStrategyKind): MergeStrategy = {
     kind match {
-      case _: manifests.MergeStrategyAppend =>
+      case _: manifests.MergeStrategyKind.Append =>
         new AppendMergeStrategy()
-      case c: manifests.MergeStrategyLedger =>
+      case c: manifests.MergeStrategyKind.Ledger =>
         new LedgerMergeStrategy(c.primaryKey)
-      case c: manifests.MergeStrategySnapshot =>
+      case c: manifests.MergeStrategyKind.Snapshot =>
         new SnapshotMergeStrategy(
           primaryKey = c.primaryKey,
           compareColumns = c.compareColumns

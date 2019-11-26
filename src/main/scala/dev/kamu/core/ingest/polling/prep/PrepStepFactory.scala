@@ -8,7 +8,7 @@
 
 package dev.kamu.core.ingest.polling.prep
 
-import dev.kamu.core.manifests.{PrepStepDecompress, PrepStepKind, PrepStepPipe}
+import dev.kamu.core.manifests.PrepStepKind
 import org.apache.hadoop.fs.FileSystem
 import org.apache.log4j.LogManager
 
@@ -19,7 +19,7 @@ class PrepStepFactory(fileSystem: FileSystem) {
     config: PrepStepKind
   ): PrepStep = {
     config match {
-      case dc: PrepStepDecompress =>
+      case dc: PrepStepKind.Decompress =>
         dc.format.toLowerCase match {
           case "gzip" =>
             logger.info("Extracting gzip")
@@ -32,7 +32,7 @@ class PrepStepFactory(fileSystem: FileSystem) {
               s"Unknown compression format: ${dc.format}"
             )
         }
-      case pipe: PrepStepPipe =>
+      case pipe: PrepStepKind.Pipe =>
         new ProcessPipeStep(pipe.command)
       case _ =>
         throw new NotImplementedError(s"Unknown prep step: $config")
