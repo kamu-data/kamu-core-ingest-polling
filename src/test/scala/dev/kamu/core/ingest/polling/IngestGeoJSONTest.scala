@@ -11,6 +11,9 @@ package dev.kamu.core.ingest.polling
 import java.sql.Timestamp
 
 import dev.kamu.core.manifests._
+import dev.kamu.core.manifests.parsing.pureconfig.yaml
+import yaml.defaults._
+import pureconfig.generic.auto._
 import dev.kamu.core.utils.fs._
 import org.apache.spark.sql.functions
 import org.scalatest.FunSuite
@@ -23,17 +26,6 @@ class IngestGeoJSONTest extends FunSuite with IngestSuite {
       val inputPath = tempDir
         .resolve("src")
         .resolve("polygons.json")
-
-      val dataset = Dataset(
-        id = DatasetID("dev.kamu.test"),
-        rootPollingSource = Some(
-          RootPollingSource(
-            fetch = ExternalSourceKind.FetchUrl(url = inputPath.toUri),
-            read = ReaderKind.Geojson(),
-            merge = MergeStrategyKind.Snapshot(primaryKey = Vector("id"))
-          )
-        )
-      ).postLoad()
 
       val inputData =
         """{
@@ -82,6 +74,22 @@ class IngestGeoJSONTest extends FunSuite with IngestSuite {
         |  ]
         |}""".stripMargin
 
+      val dataset = yaml.load[Dataset](s"""
+        |id: dev.kamu.test
+        |rootPollingSource:
+        |  fetch:
+        |    kind: fetchUrl
+        |    url: $inputPath
+        |    eventTime:
+        |      kind: fromSystemTime
+        |  read:
+        |    kind: geojson
+        |  merge:
+        |    kind: snapshot
+        |    primaryKey:
+        |    - id
+        |""".stripMargin)
+
       writeFile(inputPath, inputData)
 
       val actual = ingest(tempDir, dataset, new Timestamp(0))
@@ -92,6 +100,7 @@ class IngestGeoJSONTest extends FunSuite with IngestSuite {
           Seq(
             (
               new Timestamp(0),
+              new Timestamp(0),
               "I",
               "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))",
               "0",
@@ -99,6 +108,7 @@ class IngestGeoJSONTest extends FunSuite with IngestSuite {
               "A"
             ),
             (
+              new Timestamp(0),
               new Timestamp(0),
               "I",
               "POLYGON ((0 0, 20 0, 20 20, 0 20, 0 0))",
@@ -108,7 +118,15 @@ class IngestGeoJSONTest extends FunSuite with IngestSuite {
             )
           )
         )
-        .toDF("systemTime", "observed", "geometry", "id", "zipcode", "name")
+        .toDF(
+          "systemTime",
+          "eventTime",
+          "observed",
+          "geometry",
+          "id",
+          "zipcode",
+          "name"
+        )
         .withColumn(
           "geometry",
           functions.callUDF("ST_GeomFromWKT", functions.col("geometry"))

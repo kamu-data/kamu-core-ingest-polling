@@ -8,16 +8,15 @@
 
 package dev.kamu.core.ingest.polling
 
-import java.sql.Timestamp
-
 import dev.kamu.core.manifests._
+import dev.kamu.core.manifests.parsing.pureconfig.yaml
+import yaml.defaults._
+import pureconfig.generic.auto._
 import dev.kamu.core.utils.fs._
 import org.scalatest.FunSuite
 
 class IngestSnapshotTest extends FunSuite with IngestSuite {
   import spark.implicits._
-
-  def ts(milis: Long) = new Timestamp(milis)
 
   test("first time ingest") {
     withTempDir(tempDir => {
@@ -28,26 +27,32 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
           |3,charlie,300,0
           |""".stripMargin
 
-      val inputSchema =
-        Vector("id INT", "name STRING", "balance INT", "version INT")
-
       val inputPath = tempDir
         .resolve("src")
         .resolve("balances.csv")
 
-      val dataset = Dataset(
-        id = DatasetID("dev.kamu.test"),
-        rootPollingSource = Some(
-          RootPollingSource(
-            fetch = ExternalSourceKind.FetchUrl(inputPath.toUri),
-            read = ReaderKind.Csv(schema = inputSchema),
-            merge = MergeStrategyKind.Snapshot(
-              primaryKey = Vector("id"),
-              compareColumns = Vector("version")
-            )
-          )
-        )
-      ).postLoad()
+      val dataset = yaml.load[Dataset](s"""
+        |id: dev.kamu.test
+        |rootPollingSource:
+        |  fetch:
+        |    kind: fetchUrl
+        |    url: $inputPath
+        |    eventTime:
+        |      kind: fromSystemTime
+        |  read:
+        |    kind: csv
+        |    schema:
+        |    - id INT
+        |    - name STRING
+        |    - balance INT
+        |    - version INT
+        |  merge:
+        |    kind: snapshot
+        |    primaryKey:
+        |    - id
+        |    compareColumns:
+        |    - version
+        |""".stripMargin)
 
       writeFile(inputPath, inputData)
 
@@ -57,12 +62,20 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
       val expected = sc
         .parallelize(
           Seq(
-            (ts(0), "I", 1, "alex", 100, 0),
-            (ts(0), "I", 2, "bob", 200, 0),
-            (ts(0), "I", 3, "charlie", 300, 0)
+            (ts(0), ts(0), "I", 1, "alex", 100, 0),
+            (ts(0), ts(0), "I", 2, "bob", 200, 0),
+            (ts(0), ts(0), "I", 3, "charlie", 300, 0)
           )
         )
-        .toDF("systemTime", "observed", "id", "name", "balance", "version")
+        .toDF(
+          "systemTime",
+          "eventTime",
+          "observed",
+          "id",
+          "name",
+          "balance",
+          "version"
+        )
 
       assertDataFrameEquals(expected, actual, ignoreNullable = true)
     })
@@ -82,26 +95,32 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
         |4,dan,100,0
         |""".stripMargin
 
-      val inputSchema =
-        Vector("id INT", "name STRING", "balance INT", "version INT")
-
       val inputPath = tempDir
         .resolve("src")
         .resolve("balances.csv")
 
-      val dataset = Dataset(
-        id = DatasetID("dev.kamu.test"),
-        rootPollingSource = Some(
-          RootPollingSource(
-            fetch = ExternalSourceKind.FetchUrl(inputPath.toUri),
-            read = ReaderKind.Csv(schema = inputSchema),
-            merge = MergeStrategyKind.Snapshot(
-              primaryKey = Vector("id"),
-              compareColumns = Vector("version")
-            )
-          )
-        )
-      ).postLoad()
+      val dataset = yaml.load[Dataset](s"""
+        |id: dev.kamu.test
+        |rootPollingSource:
+        |  fetch:
+        |    kind: fetchUrl
+        |    url: $inputPath
+        |    eventTime:
+        |      kind: fromSystemTime
+        |  read:
+        |    kind: csv
+        |    schema:
+        |    - id INT
+        |    - name STRING
+        |    - balance INT
+        |    - version INT
+        |  merge:
+        |    kind: snapshot
+        |    primaryKey:
+        |    - id
+        |    compareColumns:
+        |    - version
+        |""".stripMargin)
 
       writeFile(inputPath, inputData1)
 
@@ -110,20 +129,28 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
       writeFile(inputPath, inputData2)
 
       val actual = ingest(tempDir, dataset, ts(1))
-        .orderBy("systemTime", "id")
+        .orderBy("systemTime", "eventTime", "id")
 
       val expected = sc
         .parallelize(
           Seq(
-            (ts(0), "I", 1, "alex", 100, 0),
-            (ts(0), "I", 2, "bob", 200, 0),
-            (ts(0), "I", 3, "charlie", 300, 0),
-            (ts(1), "D", 1, "alex", 100, 0),
-            (ts(1), "U", 3, "charlie", 500, 1),
-            (ts(1), "I", 4, "dan", 100, 0)
+            (ts(0), ts(0), "I", 1, "alex", 100, 0),
+            (ts(0), ts(0), "I", 2, "bob", 200, 0),
+            (ts(0), ts(0), "I", 3, "charlie", 300, 0),
+            (ts(1), ts(1), "D", 1, "alex", 100, 0),
+            (ts(1), ts(1), "U", 3, "charlie", 500, 1),
+            (ts(1), ts(1), "I", 4, "dan", 100, 0)
           )
         )
-        .toDF("systemTime", "observed", "id", "name", "balance", "version")
+        .toDF(
+          "systemTime",
+          "eventTime",
+          "observed",
+          "id",
+          "name",
+          "balance",
+          "version"
+        )
 
       assertDataFrameEquals(expected, actual, ignoreNullable = true)
     })

@@ -14,8 +14,11 @@ import java.time.Instant
 import dev.kamu.core.ingest.polling.utils.ExecutionResult
 import org.apache.hadoop.fs.{FileSystem, Path}
 
-class FileSystemGlobSource(fileSystem: FileSystem, pathPattern: Path)
-    extends CacheableSource {
+class FileSystemGlobSource(
+  fileSystem: FileSystem,
+  pathPattern: Path,
+  eventTimeSource: EventTimeSource
+) extends CacheableSource {
 
   override def sourceID: String = pathPattern.toString
 
@@ -31,22 +34,28 @@ class FileSystemGlobSource(fileSystem: FileSystem, pathPattern: Path)
     val globbedFiles = fileSystem
       .globStatus(pathPattern)
       .map(_.getPath)
-      .sortBy(_.toString)
 
     val oldCheckpoint = checkpoint
       .map(_.asInstanceOf[MultiSourceDownloadCheckpoint])
-      .getOrElse(MultiSourceDownloadCheckpoint(lastDownloaded = Instant.now()))
+      .getOrElse(
+        MultiSourceDownloadCheckpoint(
+          lastDownloaded = Instant.now(),
+          eventTime = None
+        )
+      )
 
     val childCheckpoints = oldCheckpoint.children
       .map(c => c.source -> c)
       .toMap
 
-    for (file <- globbedFiles) {
-      val childCheckpoint = childCheckpoints
-        .get(file.toString)
-        .map(c => c.checkpoint)
+    val sources = globbedFiles
+      .map(new FileSystemSource(fileSystem, _, eventTimeSource))
+      .sortBy(s => eventTimeSource.getEventTime(s))
 
-      val fileSource = new FileSystemSource(fileSystem, file)
+    for (fileSource <- sources) {
+      val childCheckpoint = childCheckpoints
+        .get(fileSource.path.toString)
+        .map(c => c.checkpoint)
 
       val result = fileSource.maybeDownload(
         childCheckpoint,
@@ -57,19 +66,20 @@ class FileSystemGlobSource(fileSystem: FileSystem, pathPattern: Path)
       if (!result.wasUpToDate) {
         val newChildCheckpoint = MultiSourceDownloadCheckpoint
           .ChildCheckpoint(
-            source = file.toString,
+            source = fileSource.path.toString,
             checkpoint =
               result.checkpoint.asInstanceOf[SimpleDownloadCheckpoint]
           )
 
         val updatedChildCheckpoints = (
-          childCheckpoints + (file.toString -> newChildCheckpoint)
+          childCheckpoints + (fileSource.path.toString -> newChildCheckpoint)
         ).toVector.sortBy(_._1).map(_._2)
 
         return ExecutionResult(
           wasUpToDate = false,
           checkpoint = MultiSourceDownloadCheckpoint(
             lastDownloaded = result.checkpoint.lastDownloaded,
+            eventTime = result.checkpoint.eventTime,
             children = updatedChildCheckpoints
           )
         )

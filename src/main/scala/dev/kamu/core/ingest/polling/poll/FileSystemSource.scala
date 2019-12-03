@@ -9,14 +9,16 @@
 package dev.kamu.core.ingest.polling.poll
 
 import java.io.InputStream
-import java.net.URI
 import java.time.Instant
 
 import dev.kamu.core.ingest.polling.utils.ExecutionResult
 import org.apache.hadoop.fs.{FileSystem, Path}
 
-class FileSystemSource(fileSystem: FileSystem, path: Path)
-    extends CacheableSource {
+class FileSystemSource(
+  fileSystem: FileSystem,
+  val path: Path,
+  eventTimeSource: EventTimeSource
+) extends CacheableSource {
 
   override def sourceID: String = path.toString
 
@@ -50,7 +52,8 @@ class FileSystemSource(fileSystem: FileSystem, path: Path)
         wasUpToDate = false,
         checkpoint = SimpleDownloadCheckpoint(
           lastDownloaded = Instant.now(),
-          lastModified = Some(lastModified)
+          lastModified = Some(lastModified),
+          eventTime = eventTimeSource.getEventTime(this)
         )
       )
     } else {

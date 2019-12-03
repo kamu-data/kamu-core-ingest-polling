@@ -35,6 +35,10 @@ object DFUtils {
         None
     }
 
+    def hasColumn(column: String): Boolean = {
+      df.getColumn(column).isDefined
+    }
+
     /** Reorders columns in the [[DataFrame]] */
     def columnToFront(columns: String*): DataFrame = {
       val front = columns.toList

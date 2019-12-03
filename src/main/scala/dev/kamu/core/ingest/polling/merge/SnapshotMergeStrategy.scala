@@ -13,7 +13,7 @@ import dev.kamu.core.ingest.polling.utils.DFUtils._
 import dev.kamu.core.ingest.polling.utils.TimeSeriesUtils
 import dev.kamu.core.manifests.DatasetVocabulary
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.{col, lit, when}
+import org.apache.spark.sql.functions.{col, lit, when, min, max}
 
 /** Snapshot data merge strategy.
   *
@@ -52,108 +52,104 @@ class SnapshotMergeStrategy(
   primaryKey: Vector[String],
   compareColumns: Vector[String] = Vector.empty,
   vocab: DatasetVocabulary = DatasetVocabulary()
-) extends MergeStrategy {
+) extends MergeStrategy(vocab) {
 
-  /** Performs diff-based merge.
-    *
-    * Equivalent SQL:
-    * {{{
-    * SELECT
-    *   ${systemTime} as systemTime,
-    *   CASE
-    *     WHEN prev.${pk} IS NULL THEN "I"
-    *     WHEN curr.${pk} IS NULL THEN "D"
-    *     ELSE "U"
-    *   END AS observed,
-    *   CASE
-    *     WHEN curr.${pk} IS NULL THEN prev.A
-    *     ELSE curr.A
-    *   END AS A,
-    *   ...
-    *   CASE
-    *     WHEN curr.${pk} IS NULL THEN prev.Z
-    *     ELSE curr.A
-    *   END AS Z,
-    *   COALESCE(curr.A, prev.A) as A
-    * FROM curr
-    * FULL OUTER JOIN prev
-    *   ON curr.%{pk} = prev.%{pk}
-    * WHERE curr.${pk} IS NULL
-    *   OR prev.${pk} IS NULL
-    *   OR curr.${modInd} != prev.${modInd}
-    * }}}
-    */
   override def merge(
-    prevSeries: Option[DataFrame],
-    curr: DataFrame,
-    systemTime: Timestamp
+    prevRaw: Option[DataFrame],
+    currRaw: DataFrame,
+    systemTime: Timestamp,
+    eventTime: Option[Timestamp]
   ): DataFrame = {
-    val prev = if (prevSeries.isDefined) {
-      TimeSeriesUtils
-        .asOf(prevSeries.get, primaryKey)
-        .drop(vocab.lastUpdatedTimeSystemColumn)
-    } else {
-      TimeSeriesUtils.empty(curr)
+    val (prev, curr, addedColumns, removedColumns) =
+      prepare(prevRaw, currRaw, systemTime, eventTime)
+
+    val lastSeenEventTime =
+      prev.agg(min(vocab.eventTimeColumn)).head().getTimestamp(0)
+    val newEventTime =
+      curr.agg(min(vocab.eventTimeColumn)).head().getTimestamp(0)
+
+    if (lastSeenEventTime != null && newEventTime != null && lastSeenEventTime
+          .compareTo(newEventTime) >= 0) {
+      throw new Exception(
+        s"Past event time was seen, snapshots don't support adding data out of order: $lastSeenEventTime >= $newEventTime"
+      )
     }
 
-    val combinedDataColumnNames = (prev.columns ++ curr.columns).distinct.toList
+    val dataColumns = curr.columns
+      .filter(
+        c =>
+          c != vocab.systemTimeColumn && c != vocab.eventTimeColumn && c != vocab.observationColumn
+      )
+      .toVector
 
     val columnsToCompare =
-      if (compareColumns.nonEmpty) compareColumns else combinedDataColumnNames
+      if (compareColumns.nonEmpty) {
+        val invalidColumns = compareColumns.filter(!curr.hasColumn(_))
+        if (invalidColumns.nonEmpty)
+          throw new RuntimeException(
+            s"Column does not exist: " + invalidColumns.mkString(", ")
+          )
+        compareColumns
+      } else {
+        dataColumns.filter(!primaryKey.contains(_))
+      }
+
+    val prevProj = TimeSeriesUtils
+      .asOf(prev, primaryKey)
+      .drop(vocab.lastUpdatedTimeSystemColumn)
 
     // We consider data changed when
     // either both columns exist and have different values
     // or column disappears while having non-null value
     // or column is added with non-null value
     val changedPredicate = columnsToCompare
-      .map(columnName => {
-        val pc = prev.getColumn(columnName)
-        val cc = curr.getColumn(columnName)
-        if (pc.isDefined && cc.isDefined) {
-          pc.get =!= cc.get
-        } else if (pc.isDefined) {
-          pc.get.isNotNull
-        } else if (cc.isDefined) {
-          cc.get.isNotNull
+      .map(c => {
+        if (addedColumns.contains(c)) {
+          curr(c).isNotNull
+        } else if (removedColumns.contains(c)) {
+          prevProj(c).isNotNull
         } else {
-          throw new RuntimeException(s"Column does not exist: $columnName")
+          prevProj(c) =!= curr(c)
         }
       })
       .foldLeft(lit(false))((a, b) => a || b)
 
-    def columnOrNull(df: DataFrame, name: String) =
-      df.getColumn(name).getOrElse(lit(null))
-
-    val resultDataColumns = combinedDataColumnNames
+    val resultDataColumns = dataColumns
       .map(
-        columnName =>
+        c =>
           when(
             col(vocab.observationColumn) === vocab.obsvRemoved,
-            columnOrNull(prev, columnName)
-          ).otherwise(columnOrNull(curr, columnName))
-            .as(columnName)
+            prevProj(c)
+          ).otherwise(curr(c))
+            .as(c)
       )
 
-    val resultColumns = col(vocab.systemTimeColumn) :: col(
-      vocab.observationColumn
-    ) :: resultDataColumns
+    val resultColumns = (
+      lit(systemTime).as(vocab.systemTimeColumn)
+        :: when(
+          col(vocab.observationColumn) === vocab.obsvRemoved,
+          lit(eventTime.getOrElse(systemTime))
+        ).otherwise(curr(vocab.eventTimeColumn)).as(vocab.eventTimeColumn)
+        :: col(vocab.observationColumn)
+        :: resultDataColumns.toList
+    )
 
-    curr
+    val result = curr
+      .drop(vocab.systemTimeColumn, vocab.observationColumn)
       .join(
-        prev,
-        primaryKey.map(c => prev(c) <=> curr(c)).reduce(_ && _),
+        prevProj,
+        primaryKey.map(c => prevProj(c) <=> curr(c)).reduce(_ && _),
         "full_outer"
       )
       .filter(
-        primaryKey.map(curr(_).isNull).reduce(_ && _) ||
-          primaryKey.map(prev(_).isNull).reduce(_ && _) ||
-          changedPredicate
+        primaryKey.map(curr(_).isNull).reduce(_ && _)
+          || primaryKey.map(prevProj(_).isNull).reduce(_ && _)
+          || changedPredicate
       )
-      .withColumn(vocab.systemTimeColumn, lit(systemTime))
       .withColumn(
         vocab.observationColumn,
         when(
-          primaryKey.map(prev(_).isNull).reduce(_ && _),
+          primaryKey.map(prevProj(_).isNull).reduce(_ && _),
           vocab.obsvAdded
         ).when(
             primaryKey.map(curr(_).isNull).reduce(_ && _),
@@ -162,5 +158,30 @@ class SnapshotMergeStrategy(
           .otherwise(vocab.obsvChanged)
       )
       .select(resultColumns: _*)
+
+    orderColumns(result)
+  }
+
+  override protected def prepare(
+    prevRaw: Option[DataFrame],
+    currRaw: DataFrame,
+    systemTime: Timestamp,
+    eventTime: Option[Timestamp]
+  ): (DataFrame, DataFrame, Set[String], Set[String]) = {
+    val (prev, curr, addedColumns, removedColumns) =
+      super.prepare(prevRaw, currRaw, systemTime, eventTime)
+
+    (
+      prev.maybeTransform(
+        !prev.hasColumn(vocab.observationColumn),
+        _.withColumn(vocab.observationColumn, lit(vocab.obsvAdded))
+      ),
+      curr.maybeTransform(
+        !curr.hasColumn(vocab.observationColumn),
+        _.withColumn(vocab.observationColumn, lit(vocab.obsvAdded))
+      ),
+      addedColumns,
+      removedColumns - vocab.observationColumn
+    )
   }
 }

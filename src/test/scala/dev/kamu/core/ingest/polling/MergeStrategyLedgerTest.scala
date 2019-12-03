@@ -8,8 +8,6 @@
 
 package dev.kamu.core.ingest.polling
 
-import java.sql.Timestamp
-
 import dev.kamu.core.utils.test.KamuDataFrameSuite
 import dev.kamu.core.ingest.polling.merge.LedgerMergeStrategy
 import org.scalatest.FunSuite
@@ -18,8 +16,6 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
   import spark.implicits._
 
   protected override val enableHiveSupport = false
-
-  def ts(milis: Long) = new Timestamp(milis)
 
   test("From empty") {
     val curr = sc
@@ -35,7 +31,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
     val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
-      .merge(None, curr, ts(3))
+      .merge(None, curr, ts(3), None)
       .orderBy("systemTime", "eventTime", "id")
 
     val expected = sc
@@ -78,7 +74,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
     val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(6))
+      .merge(Some(prev), curr, ts(6), None)
       .orderBy("systemTime", "eventTime", "id")
 
     val expected = sc
@@ -121,7 +117,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
     val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(6))
+      .merge(Some(prev), curr, ts(6), None)
       .orderBy("systemTime", "eventTime", "id")
 
     val expected = sc
@@ -165,7 +161,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
     val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(6))
+      .merge(Some(prev), curr, ts(6), None)
       .orderBy("systemTime", "eventTime", "id")
 
     val expected = sc

@@ -8,8 +8,6 @@
 
 package dev.kamu.core.ingest.polling
 
-import java.sql.Timestamp
-
 import dev.kamu.core.manifests._
 import dev.kamu.core.manifests.parsing.pureconfig.yaml
 import yaml.defaults._
@@ -20,9 +18,7 @@ import org.scalatest.FunSuite
 class IngestMultiSourceTest extends FunSuite with IngestSuite {
   import spark.implicits._
 
-  def ts(milis: Long) = new Timestamp(milis)
-
-  ignore("files glob") {
+  test("files glob") {
     withTempDir(tempDir => {
       val inputData1 =
         """1,alex,100
@@ -35,9 +31,6 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
         |3,charlie,500
         |4,dan,100
         |""".stripMargin
-
-      val inputSchema =
-        Vector("id INT", "name STRING", "balance INT")
 
       val inputPath1 = tempDir
         .resolve("src")
@@ -56,6 +49,10 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
           |  fetch:
           |    kind: fetchFilesGlob
           |    path: ${tempDir.resolve("src").resolve("balances-*.csv")}
+          |    eventTime:
+          |      kind: fromPath
+          |      pattern: balances-(\\d+-\\d+-\\d+)\\.csv
+          |      timestampFormat: yyyy-MM-dd
           |    cache:
           |      kind: forever
           |  read:
@@ -82,22 +79,20 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
 
       // Second ingest should ignore modified files as we cache forever
       val actual = ingest(tempDir, dataset, ts(0))
-        .orderBy("id")
-
-      actual.show()
+        .orderBy("systemTime", "eventTime", "id")
 
       val expected = sc
         .parallelize(
           Seq(
-            (ts(0), "I", "2001-01-01", 1, "alex", 100),
-            (ts(0), "I", "2001-01-01", 2, "bob", 200),
-            (ts(0), "I", "2001-01-01", 3, "charlie", 300),
-            (ts(0), "D", "2001-02-01", 1, "alex", 100),
-            (ts(0), "U", "2001-02-01", 3, "charlie", 500),
-            (ts(0), "I", "2001-02-01", 4, "dan", 100)
+            (ts(0), ts(2001, 1, 1), "I", 1, "alex", 100),
+            (ts(0), ts(2001, 1, 1), "I", 2, "bob", 200),
+            (ts(0), ts(2001, 1, 1), "I", 3, "charlie", 300),
+            (ts(0), ts(2001, 2, 1), "D", 1, "alex", 100),
+            (ts(0), ts(2001, 2, 1), "U", 3, "charlie", 500),
+            (ts(0), ts(2001, 2, 1), "I", 4, "dan", 100)
           )
         )
-        .toDF("systemTime", "observed", "eventTime", "id", "name", "balance")
+        .toDF("systemTime", "eventTime", "observed", "id", "name", "balance")
 
       assertDataFrameEquals(expected, actual, ignoreNullable = true)
     })

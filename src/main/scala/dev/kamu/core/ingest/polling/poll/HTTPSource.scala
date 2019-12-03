@@ -17,7 +17,10 @@ import java.time.{Instant, ZonedDateTime}
 import dev.kamu.core.ingest.polling.utils.ExecutionResult
 import scalaj.http.Http
 
-class HTTPSource(url: URI) extends CacheableSource {
+class HTTPSource(
+  url: URI,
+  eventTimeSource: EventTimeSource
+) extends CacheableSource {
 
   override def sourceID: String = url.toString
 
@@ -77,7 +80,8 @@ class HTTPSource(url: URI) extends CacheableSource {
                     .toInstant
               ),
             eTag = response.header("ETag"),
-            lastDownloaded = Instant.now()
+            lastDownloaded = Instant.now(),
+            eventTime = eventTimeSource.getEventTime(this)
           )
         )
       case 304 =>

@@ -10,11 +10,8 @@ package dev.kamu.core.ingest.polling.merge
 
 import java.sql.Timestamp
 
-import dev.kamu.core.ingest.polling.utils.DFUtils._
-import dev.kamu.core.ingest.polling.utils.TimeSeriesUtils
 import dev.kamu.core.manifests.DatasetVocabulary
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.lit
 
 /** Append merge strategy.
   *
@@ -25,31 +22,17 @@ import org.apache.spark.sql.functions.lit
   */
 class AppendMergeStrategy(
   vocab: DatasetVocabulary = DatasetVocabulary()
-) extends MergeStrategy {
+) extends MergeStrategy(vocab) {
 
   override def merge(
-    prevSeries: Option[DataFrame],
-    currSeries: DataFrame,
-    systemTime: Timestamp
+    prevRaw: Option[DataFrame],
+    currRaw: DataFrame,
+    systemTime: Timestamp,
+    eventTime: Option[Timestamp]
   ): DataFrame = {
-    val curr = currSeries
-      .withColumn(vocab.systemTimeColumn, lit(systemTime))
-      .columnToFront(vocab.systemTimeColumn)
+    val (_, curr, _, _) = prepare(prevRaw, currRaw, systemTime, eventTime)
 
-    val prev = prevSeries.getOrElse(TimeSeriesUtils.empty(curr))
-
-    val combinedColumnNames = (prev.columns ++ curr.columns).distinct.toList
-
-    val resultColumns = combinedColumnNames
-      .map(
-        columnName =>
-          curr
-            .getColumn(columnName)
-            .getOrElse(lit(null))
-            .as(columnName)
-      )
-
-    curr.select(resultColumns: _*)
+    orderColumns(curr)
   }
 
 }

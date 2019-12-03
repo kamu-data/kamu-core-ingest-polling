@@ -36,34 +36,27 @@ import org.apache.spark.sql.functions.lit
 class LedgerMergeStrategy(
   pk: Vector[String],
   vocab: DatasetVocabulary = DatasetVocabulary()
-) extends MergeStrategy {
+) extends MergeStrategy(vocab) {
 
   override def merge(
-    prevSeries: Option[DataFrame],
-    currSeries: DataFrame,
-    systemTime: Timestamp
+    prevRaw: Option[DataFrame],
+    currRaw: DataFrame,
+    systemTime: Timestamp,
+    eventTime: Option[Timestamp]
   ): DataFrame = {
-    val curr = currSeries
-      .withColumn(vocab.systemTimeColumn, lit(systemTime))
-      .columnToFront(vocab.systemTimeColumn)
+    if (eventTime.isDefined)
+      throw new Exception("Event time must be contained within ledger data")
 
-    val prev = prevSeries.getOrElse(TimeSeriesUtils.empty(curr))
+    val (prev, curr, _, _) = prepare(prevRaw, currRaw, systemTime, eventTime)
 
-    val combinedColumnNames = (prev.columns ++ curr.columns).distinct.toList
-
-    val resultColumns = combinedColumnNames
-      .map(
-        columnName =>
-          curr
-            .getColumn(columnName)
-            .getOrElse(lit(null))
-            .as(columnName)
-      )
-
-    curr
-      .join(prev, pk.map(c => curr(c) <=> prev(c)).reduce(_ && _), "left_outer")
-      .filter(pk.map(c => prev(c).isNull).reduce(_ || _))
-      .select(resultColumns: _*)
+    orderColumns(
+      curr
+        .join(
+          prev,
+          pk.map(c => curr(c) <=> prev(c)).reduce(_ && _),
+          "left_anti"
+        )
+    )
   }
 
 }

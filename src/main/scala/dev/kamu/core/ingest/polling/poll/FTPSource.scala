@@ -15,7 +15,10 @@ import java.time.Instant
 import dev.kamu.core.ingest.polling.utils.ExecutionResult
 import org.apache.commons.net.ftp.{FTP, FTPClient}
 
-class FTPSource(url: URI) extends CacheableSource {
+class FTPSource(
+  url: URI,
+  eventTimeSource: EventTimeSource
+) extends CacheableSource {
 
   override def sourceID: String = url.toString
 
@@ -49,7 +52,10 @@ class FTPSource(url: URI) extends CacheableSource {
 
     ExecutionResult(
       wasUpToDate = false,
-      checkpoint = SimpleDownloadCheckpoint(lastDownloaded = Instant.now())
+      checkpoint = SimpleDownloadCheckpoint(
+        lastDownloaded = Instant.now(),
+        eventTime = eventTimeSource.getEventTime(this)
+      )
     )
   }
 }

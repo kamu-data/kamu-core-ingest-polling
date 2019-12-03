@@ -61,7 +61,7 @@ class Ingest(
   private val logger = LogManager.getLogger(getClass.getName)
 
   private val fileSystem = FileSystem.get(hadoopConf)
-  private val sourceFactory = new SourceFactory(fileSystem)
+  private val sourceFactory = new SourceFactory(fileSystem, getSystemTime)
   private val prepStepFactory = new PrepStepFactory(fileSystem)
   private val conversionStepFactory = new ConversionStepFactory()
   private val downloadExecutor =
@@ -247,6 +247,7 @@ class Ingest(
             wasUpToDate = false,
             checkpoint = PrepCheckpoint(
               downloadTimestamp = downloadCheckpoint.lastDownloaded,
+              eventTime = downloadCheckpoint.eventTime,
               lastPrepared = Instant.now()
             )
           )
@@ -275,6 +276,7 @@ class Ingest(
           ingest(
             getSparkSubSession(sparkSession),
             source,
+            prepCheckpoint.eventTime,
             prepDataPath,
             ingestDataPath
           )
@@ -294,6 +296,7 @@ class Ingest(
   def ingest(
     spark: SparkSession,
     source: RootPollingSource,
+    eventTime: Option[Instant],
     filePath: Path,
     outPath: Path
   ): Unit = {
@@ -313,7 +316,7 @@ class Ingest(
     reader(spark, source, filePath)
       .transform(normalizeSchema(source))
       .transform(preprocess(source))
-      .transform(mergeWithExisting(source, outPath))
+      .transform(mergeWithExisting(source, eventTime, outPath))
       .maybeTransform(source.coalesce != 0, _.coalesce(source.coalesce))
       .write
       .mode(SaveMode.Append)
@@ -431,7 +434,11 @@ class Ingest(
     )
   }
 
-  def mergeWithExisting(source: RootPollingSource, outPath: Path)(
+  def mergeWithExisting(
+    source: RootPollingSource,
+    eventTime: Option[Instant],
+    outPath: Path
+  )(
     curr: DataFrame
   ): DataFrame = {
     val spark = curr.sparkSession
@@ -443,7 +450,12 @@ class Ingest(
       else
         None
 
-    mergeStrategy.merge(prev, curr, getSystemTime())
+    mergeStrategy.merge(
+      prev,
+      curr,
+      getSystemTime(),
+      eventTime.map(Timestamp.from)
+    )
   }
 
   def getSparkSubSession(sparkSession: SparkSession): SparkSession = {

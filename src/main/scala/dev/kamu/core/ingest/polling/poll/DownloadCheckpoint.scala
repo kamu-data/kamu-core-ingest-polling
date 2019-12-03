@@ -14,11 +14,13 @@ import dev.kamu.core.manifests.Resource
 
 sealed trait DownloadCheckpoint extends Resource[DownloadCheckpoint] {
   def lastDownloaded: Instant
+  def eventTime: Option[Instant]
   def isCacheable: Boolean
 }
 
 case class SimpleDownloadCheckpoint(
   lastDownloaded: Instant,
+  eventTime: Option[Instant],
   lastModified: Option[Instant] = None,
   eTag: Option[String] = None
 ) extends DownloadCheckpoint {
@@ -27,6 +29,7 @@ case class SimpleDownloadCheckpoint(
 
 case class MultiSourceDownloadCheckpoint(
   lastDownloaded: Instant,
+  eventTime: Option[Instant],
   children: Vector[MultiSourceDownloadCheckpoint.ChildCheckpoint] = Vector.empty
 ) extends DownloadCheckpoint {
   override def isCacheable: Boolean = true

@@ -14,235 +14,291 @@ import dev.kamu.core.utils.test.KamuDataFrameSuite
 import dev.kamu.core.ingest.polling.merge.SnapshotMergeStrategy
 import org.scalatest.FunSuite
 
+case class Employee(
+  id: Int,
+  name: String,
+  salary: Int
+)
+
+case class EmployeeV2(
+  id: Int,
+  name: String,
+  department: String,
+  salary: Int
+)
+
+case class EmployeeEvent(
+  systemTime: Timestamp,
+  eventTime: Timestamp,
+  observed: String,
+  id: Int,
+  name: String,
+  salary: Int
+)
+
+case class EmployeeEventV2(
+  systemTime: Timestamp,
+  eventTime: Timestamp,
+  observed: String,
+  id: Int,
+  name: String,
+  department: String,
+  salary: Int
+)
+
 class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
   import spark.implicits._
 
   protected override val enableHiveSupport = false
 
-  def ts(milis: Long) = new Timestamp(milis)
-
-  test("PK and Indicator - from empty") {
+  test("From empty") {
     val curr = sc
       .parallelize(
         Seq(
-          (1, "A", "x", 0),
-          (2, "B", "y", 0),
-          (3, "C", "z", 0)
+          Employee(1, "Alice", 100),
+          Employee(2, "Bob", 80),
+          Employee(3, "Charlie", 120)
         )
       )
-      .toDF("id", "name", "data", "version")
-
-    val strategy = new SnapshotMergeStrategy(Vector("id"), Vector("version"))
-
-    val actual = strategy
-      .merge(None, curr, ts(0))
-      .orderBy("systemTime", "id")
-
-    val expected = sc
-      .parallelize(
-        Seq(
-          (ts(0), "I", 1, "A", "x", 0),
-          (ts(0), "I", 2, "B", "y", 0),
-          (ts(0), "I", 3, "C", "z", 0)
-        )
-      )
-      .toDF("systemTime", "observed", "id", "name", "data", "version")
-
-    assertDataFrameEquals(expected, actual, ignoreNullable = true)
-  }
-
-  test("PK and Indicator - no changes") {
-    val prev = sc
-      .parallelize(
-        Seq(
-          (ts(0), "I", 1, "A", "x", 0),
-          (ts(0), "I", 2, "B", "y", 0),
-          (ts(0), "I", 3, "C", "z", 0)
-        )
-      )
-      .toDF("systemTime", "observed", "id", "name", "data", "version")
-
-    val curr = sc
-      .parallelize(
-        Seq(
-          (1, "A", "x", 0),
-          (2, "B", "y", 0),
-          (3, "C", "z", 0)
-        )
-      )
-      .toDF("id", "name", "data", "version")
-
-    val strategy = new SnapshotMergeStrategy(Vector("id"), Vector("version"))
-
-    val actual = strategy.merge(Some(prev), curr, ts(0))
-
-    val expected = sc
-      .parallelize(
-        Seq.empty[(Timestamp, String, Int, String, String, Int)]
-      )
-      .toDF("systemTime", "observed", "id", "name", "data", "version")
-
-    assertDataFrameEquals(expected, actual, ignoreNullable = true)
-  }
-
-  test("PK Only - all types of changes") {
-    val prev = sc
-      .parallelize(
-        Seq(
-          (ts(0), "I", 1, "A", "x"),
-          (ts(0), "I", 2, "B", "y"),
-          (ts(0), "I", 3, "C", "z")
-        )
-      )
-      .toDF("systemTime", "observed", "id", "name", "data")
-
-    val curr = sc
-      .parallelize(
-        Seq(
-          (2, "B", "y"),
-          (3, "C", "zz"),
-          (4, "D", ".")
-        )
-      )
-      .toDF("id", "name", "data")
+      .toDF()
 
     val strategy = new SnapshotMergeStrategy(Vector("id"))
 
+    val t_e = new Timestamp(0)
+    val t_s = new Timestamp(1)
+
     val actual = strategy
-      .merge(Some(prev), curr, ts(0))
-      .orderBy("systemTime", "id")
+      .merge(None, curr, t_s, Some(t_e))
+      .as[EmployeeEvent]
+      .orderBy("systemTime", "eventTime", "id")
 
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "D", 1, "A", "x"),
-          (ts(0), "U", 3, "C", "zz"),
-          (ts(0), "I", 4, "D", ".")
+          EmployeeEvent(t_s, t_e, "I", 1, "Alice", 100),
+          EmployeeEvent(t_s, t_e, "I", 2, "Bob", 80),
+          EmployeeEvent(t_s, t_e, "I", 3, "Charlie", 120)
         )
       )
-      .toDF("systemTime", "observed", "id", "name", "data")
+      .toDS
+      .orderBy("systemTime", "eventTime", "id")
 
-    assertDataFrameEquals(expected, actual, ignoreNullable = true)
+    assertDatasetEquals(expected, actual)
   }
 
-  test("PK and Indicator - all types of changes") {
-    val prev = sc
-      .parallelize(
-        Seq(
-          (ts(0), "I", 1, "A", "x", 0),
-          (ts(0), "I", 2, "B", "y", 0),
-          (ts(0), "I", 3, "C", "z", 0)
-        )
-      )
-      .toDF("systemTime", "observed", "id", "name", "data", "version")
-
+  test("No changes") {
     val curr = sc
       .parallelize(
         Seq(
-          (2, "B", "y", 0),
-          (3, "C", "zz", 1),
-          (4, "D", ".", 0)
+          Employee(1, "Alice", 100),
+          Employee(2, "Bob", 80),
+          Employee(3, "Charlie", 120)
         )
       )
-      .toDF("id", "name", "data", "version")
+      .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"), Vector("version"))
+    val strategy = new SnapshotMergeStrategy(Vector("id"))
+
+    val t_e1 = new Timestamp(0)
+    val t_s1 = new Timestamp(1)
+
+    val prev = strategy.merge(None, curr, t_s1, Some(t_e1))
+
+    val t_e2 = new Timestamp(2)
+    val t_s2 = new Timestamp(3)
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(0))
-      .orderBy("systemTime", "id")
+      .merge(Some(prev), curr, t_s2, Some(t_e2))
+      .as[EmployeeEvent]
 
-    val expected = sc
-      .parallelize(
-        Seq(
-          (ts(0), "D", 1, "A", "x", 0),
-          (ts(0), "U", 3, "C", "zz", 1),
-          (ts(0), "I", 4, "D", ".", 0)
-        )
-      )
-      .toDF("systemTime", "observed", "id", "name", "data", "version")
-
-    assertDataFrameEquals(expected, actual, ignoreNullable = true)
+    assert(actual.isEmpty)
   }
 
-  test("PK and Indicator - new column added") {
-    val prev = sc
+  test("All types of changes") {
+    val data1 = sc
       .parallelize(
         Seq(
-          (ts(0), "I", 1, "A", "x", 0),
-          (ts(0), "I", 2, "B", "y", 0),
-          (ts(0), "I", 3, "C", "z", 0)
+          Employee(1, "Alice", 100),
+          Employee(2, "Bob", 80),
+          Employee(3, "Charlie", 120)
         )
       )
-      .toDF("systemTime", "observed", "id", "name", "data", "version")
+      .toDF()
 
-    val curr = sc
+    val data2 = sc
       .parallelize(
         Seq(
-          (2, "B", "y", "a", 0),
-          (3, "C", "zz", "b", 1),
-          (4, "D", ".", "c", 0)
+          Employee(2, "Bob", 80),
+          Employee(3, "Charlie", 130),
+          Employee(4, "Dan", 100)
         )
       )
-      .toDF("id", "name", "data", "ext", "version")
+      .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"), Vector("version"))
+    val strategy = new SnapshotMergeStrategy(Vector("id"))
+
+    val t_e1 = new Timestamp(0)
+    val t_s1 = new Timestamp(1)
+
+    val prev = strategy.merge(None, data1, t_s1, Some(t_e1))
+
+    val t_e2 = new Timestamp(2)
+    val t_s2 = new Timestamp(3)
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(0))
-      .orderBy("systemTime", "id")
+      .merge(Some(prev), data2, t_s2, Some(t_e2))
+      .as[EmployeeEvent]
+      .orderBy("systemTime", "eventTime", "id")
 
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "D", 1, "A", "x", 0, null),
-          (ts(0), "U", 3, "C", "zz", 1, "b"),
-          (ts(0), "I", 4, "D", ".", 0, "c")
+          EmployeeEvent(t_s2, t_e2, "D", 1, "Alice", 100),
+          EmployeeEvent(t_s2, t_e2, "U", 3, "Charlie", 130),
+          EmployeeEvent(t_s2, t_e2, "I", 4, "Dan", 100)
         )
       )
-      .toDF("systemTime", "observed", "id", "name", "data", "version", "ext")
+      .toDS()
+      .orderBy("systemTime", "eventTime", "id")
 
-    assertDataFrameEquals(expected, actual, ignoreNullable = true)
+    assertDatasetEquals(expected, actual)
   }
 
-  test("PK and Indicator - old column missing") {
-    val prev = sc
+  test("Does not support event times from the past") {
+    val data1 = sc
       .parallelize(
         Seq(
-          (ts(0), "I", 1, "A", "x", "a", 0),
-          (ts(0), "I", 2, "B", "y", "b", 0),
-          (ts(0), "I", 3, "C", "z", "c", 0)
+          Employee(1, "Alice", 100),
+          Employee(2, "Bob", 80),
+          Employee(3, "Charlie", 120)
         )
       )
-      .toDF("systemTime", "observed", "id", "name", "data", "ext", "version")
+      .toDF()
 
-    val curr = sc
+    val data2 = sc
       .parallelize(
         Seq(
-          (2, "B", "y", 1),
-          (3, "C", "z", 1),
-          (4, "D", ".", 0)
+          Employee(1, "Alice", 100),
+          Employee(2, "Bob", 80),
+          Employee(3, "Charlie", 120)
         )
       )
-      .toDF("id", "name", "data", "version")
+      .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"), Vector("version"))
+    val strategy = new SnapshotMergeStrategy(Vector("id"))
+
+    val prev =
+      strategy.merge(None, data1, new Timestamp(1), Some(new Timestamp(1)))
+
+    assertThrows[Exception] {
+      strategy.merge(
+        Some(prev),
+        data2,
+        new Timestamp(2),
+        Some(new Timestamp(0))
+      )
+    }
+  }
+
+  test("New column added") {
+    val data1 = sc
+      .parallelize(
+        Seq(
+          Employee(1, "Alice", 100),
+          Employee(2, "Bob", 80),
+          Employee(3, "Charlie", 120)
+        )
+      )
+      .toDF()
+
+    val data2 = sc
+      .parallelize(
+        Seq(
+          EmployeeV2(2, "Bob", "IT", 80),
+          EmployeeV2(3, "Charlie", "IT", 130),
+          EmployeeV2(4, "Dan", "Accounting", 100)
+        )
+      )
+      .toDF()
+
+    val strategy = new SnapshotMergeStrategy(Vector("id"))
+
+    val t_e1 = new Timestamp(0)
+    val t_s1 = new Timestamp(1)
+
+    val prev = strategy.merge(None, data1, t_s1, Some(t_e1))
+
+    val t_e2 = new Timestamp(2)
+    val t_s2 = new Timestamp(3)
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(0))
-      .orderBy("systemTime", "id")
+      .merge(Some(prev), data2, t_s2, Some(t_e2))
+      .as[EmployeeEventV2]
+      .orderBy("systemTime", "eventTime", "id")
 
     val expected = sc
       .parallelize(
         Seq(
-          (ts(0), "D", 1, "A", "x", "a", 0),
-          (ts(0), "U", 2, "B", "y", null, 1),
-          (ts(0), "U", 3, "C", "z", null, 1),
-          (ts(0), "I", 4, "D", ".", null, 0)
+          EmployeeEventV2(t_s2, t_e2, "D", 1, "Alice", null, 100),
+          EmployeeEventV2(t_s2, t_e2, "U", 2, "Bob", "IT", 80),
+          EmployeeEventV2(t_s2, t_e2, "U", 3, "Charlie", "IT", 130),
+          EmployeeEventV2(t_s2, t_e2, "I", 4, "Dan", "Accounting", 100)
         )
       )
-      .toDF("systemTime", "observed", "id", "name", "data", "ext", "version")
+      .toDS()
+      .orderBy("systemTime", "eventTime", "id")
 
-    assertDataFrameEquals(expected, actual, ignoreNullable = true)
+    assertDatasetEquals(expected, actual)
+  }
+
+  test("Old column missing") {
+    val data1 = sc
+      .parallelize(
+        Seq(
+          EmployeeV2(1, "Alice", "IT", 100),
+          EmployeeV2(2, "Bob", "IT", 80),
+          EmployeeV2(3, "Charlie", "IT", 120)
+        )
+      )
+      .toDF()
+
+    val data2 = sc
+      .parallelize(
+        Seq(
+          Employee(2, "Bob", 80),
+          Employee(3, "Charlie", 120),
+          Employee(4, "Dan", 100)
+        )
+      )
+      .toDF()
+
+    val strategy = new SnapshotMergeStrategy(Vector("id"))
+
+    val t_e1 = new Timestamp(0)
+    val t_s1 = new Timestamp(1)
+
+    val prev = strategy.merge(None, data1, t_s1, Some(t_e1))
+
+    val t_e2 = new Timestamp(2)
+    val t_s2 = new Timestamp(3)
+
+    val actual = strategy
+      .merge(Some(prev), data2, t_s2, Some(t_e2))
+      .as[EmployeeEventV2]
+      .orderBy("systemTime", "eventTime", "id")
+
+    val expected = sc
+      .parallelize(
+        Seq(
+          EmployeeEventV2(t_s2, t_e2, "D", 1, "Alice", "IT", 100),
+          EmployeeEventV2(t_s2, t_e2, "U", 2, "Bob", null, 80),
+          EmployeeEventV2(t_s2, t_e2, "U", 3, "Charlie", null, 120),
+          EmployeeEventV2(t_s2, t_e2, "I", 4, "Dan", null, 100)
+        )
+      )
+      .toDS()
+      .orderBy("systemTime", "eventTime", "id")
+
+    assertDatasetEquals(expected, actual)
   }
 }
