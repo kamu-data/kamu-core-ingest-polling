@@ -18,11 +18,10 @@ import dev.kamu.core.ingest.polling.utils.ExecutionResult
 import scalaj.http.Http
 
 class HTTPSource(
+  val sourceID: String,
   url: URI,
   eventTimeSource: EventTimeSource
 ) extends CacheableSource {
-
-  override def sourceID: String = url.toString
 
   private val lastModifiedHeaderFormat = new SimpleDateFormat(
     "EEE, dd MMM yyyy HH:mm:ss zzz"
@@ -44,7 +43,7 @@ class HTTPSource(
       .method("GET")
 
     if (checkpoint.isDefined) {
-      val ci = checkpoint.get.asInstanceOf[SimpleDownloadCheckpoint]
+      val ci = checkpoint.get
 
       if (ci.eTag.isDefined)
         request = request
@@ -70,7 +69,7 @@ class HTTPSource(
       case 200 =>
         ExecutionResult(
           wasUpToDate = false,
-          checkpoint = SimpleDownloadCheckpoint(
+          checkpoint = DownloadCheckpoint(
             lastModified = response
               .header("LastModified")
               .map(

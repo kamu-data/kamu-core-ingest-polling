@@ -16,11 +16,10 @@ import dev.kamu.core.ingest.polling.utils.ExecutionResult
 import org.apache.commons.net.ftp.{FTP, FTPClient}
 
 class FTPSource(
+  val sourceID: String,
   url: URI,
   eventTimeSource: EventTimeSource
 ) extends CacheableSource {
-
-  override def sourceID: String = url.toString
 
   override def maybeDownload(
     checkpoint: Option[DownloadCheckpoint],
@@ -52,7 +51,7 @@ class FTPSource(
 
     ExecutionResult(
       wasUpToDate = false,
-      checkpoint = SimpleDownloadCheckpoint(
+      checkpoint = DownloadCheckpoint(
         lastDownloaded = Instant.now(),
         eventTime = eventTimeSource.getEventTime(this)
       )

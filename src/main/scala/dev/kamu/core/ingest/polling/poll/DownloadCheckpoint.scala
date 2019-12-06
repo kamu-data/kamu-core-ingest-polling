@@ -12,32 +12,11 @@ import java.time.Instant
 
 import dev.kamu.core.manifests.Resource
 
-sealed trait DownloadCheckpoint extends Resource[DownloadCheckpoint] {
-  def lastDownloaded: Instant
-  def eventTime: Option[Instant]
-  def isCacheable: Boolean
-}
-
-case class SimpleDownloadCheckpoint(
-  lastDownloaded: Instant,
+case class DownloadCheckpoint(
   eventTime: Option[Instant],
+  lastDownloaded: Instant,
   lastModified: Option[Instant] = None,
   eTag: Option[String] = None
-) extends DownloadCheckpoint {
-  override def isCacheable: Boolean = lastModified.isDefined || eTag.isDefined
-}
-
-case class MultiSourceDownloadCheckpoint(
-  lastDownloaded: Instant,
-  eventTime: Option[Instant],
-  children: Vector[MultiSourceDownloadCheckpoint.ChildCheckpoint] = Vector.empty
-) extends DownloadCheckpoint {
-  override def isCacheable: Boolean = true
-}
-
-object MultiSourceDownloadCheckpoint {
-  case class ChildCheckpoint(
-    source: String,
-    checkpoint: SimpleDownloadCheckpoint
-  )
+) extends Resource[DownloadCheckpoint] {
+  def isCacheable: Boolean = lastModified.isDefined || eTag.isDefined
 }

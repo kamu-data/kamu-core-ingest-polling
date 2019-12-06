@@ -18,7 +18,7 @@ import org.apache.log4j.LogManager
 class SourceFactory(fileSystem: FileSystem, getSystemTime: () => Timestamp) {
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def getSource(kind: ExternalSourceKind): CacheableSource = {
+  def getSource(kind: ExternalSourceKind): Seq[CacheableSource] = {
     val eventTimeSource = kind.eventTime match {
       case None =>
         new poll.EventTimeSource.NoEventTime()
@@ -34,36 +34,70 @@ class SourceFactory(fileSystem: FileSystem, getSystemTime: () => Timestamp) {
 
     kind match {
       case fetch: ExternalSourceKind.FetchUrl =>
-        fetch.url.getScheme match {
-          case "http" | "https" =>
-            new HTTPSource(
-              fetch.url,
-              eventTimeSource
-            )
-          case "ftp" =>
-            new FTPSource(
-              fetch.url,
-              eventTimeSource
-            )
-          case "gs" =>
-            new FileSystemSource(
-              fileSystem,
-              new Path(fetch.url),
-              eventTimeSource
-            )
-          case "hdfs" | "file" | null =>
-            // TODO: restrict allowed source paths for security
-            new FileSystemSource(
-              fileSystem,
-              new Path(fetch.url),
-              eventTimeSource
-            )
-          case _ =>
-            throw new NotImplementedError(s"Unsupported source: ${fetch.url}")
-        }
+        getFetchUrlSource(fetch, eventTimeSource)
       case glob: ExternalSourceKind.FetchFilesGlob =>
-        new FileSystemGlobSource(fileSystem, glob.path, eventTimeSource)
+        getFetchFilesGlobSource(glob, eventTimeSource)
     }
+  }
+
+  def getFetchUrlSource(
+    kind: ExternalSourceKind.FetchUrl,
+    eventTimeSource: EventTimeSource
+  ): Seq[CacheableSource] = {
+    kind.url.getScheme match {
+      case "http" | "https" =>
+        Seq(
+          new HTTPSource(
+            "primary",
+            kind.url,
+            eventTimeSource
+          )
+        )
+      case "ftp" =>
+        Seq(
+          new FTPSource(
+            "primary",
+            kind.url,
+            eventTimeSource
+          )
+        )
+      case "gs" | "hdfs" | "file" | null =>
+        // TODO: restrict allowed source paths for security
+        Seq(
+          new FileSystemSource(
+            "primary",
+            fileSystem,
+            new Path(kind.url),
+            eventTimeSource
+          )
+        )
+      case _ =>
+        throw new NotImplementedError(s"Unsupported source: ${kind.url}")
+    }
+  }
+
+  def getFetchFilesGlobSource(
+    kind: ExternalSourceKind.FetchFilesGlob,
+    eventTimeSource: EventTimeSource
+  ): Seq[CacheableSource] = {
+    val globbed = fileSystem
+      .globStatus(kind.path)
+      .map(
+        f =>
+          new FileSystemSource(
+            f.getPath.getName,
+            fileSystem,
+            f.getPath,
+            eventTimeSource
+          )
+      )
+      .sortBy(eventTimeSource.getEventTime)
+
+    logger.info(
+      s"Glob pattern resolved to: ${globbed.map(_.path.getName).mkString(", ")}"
+    )
+
+    globbed
   }
 
   def getCachingBehavior(kind: ExternalSourceKind): CachingBehavior = {

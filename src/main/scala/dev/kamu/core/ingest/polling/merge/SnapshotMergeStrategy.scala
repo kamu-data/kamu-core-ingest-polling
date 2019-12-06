@@ -63,17 +63,7 @@ class SnapshotMergeStrategy(
     val (prev, curr, addedColumns, removedColumns) =
       prepare(prevRaw, currRaw, systemTime, eventTime)
 
-    val lastSeenEventTime =
-      prev.agg(min(vocab.eventTimeColumn)).head().getTimestamp(0)
-    val newEventTime =
-      curr.agg(min(vocab.eventTimeColumn)).head().getTimestamp(0)
-
-    if (lastSeenEventTime != null && newEventTime != null && lastSeenEventTime
-          .compareTo(newEventTime) >= 0) {
-      throw new Exception(
-        s"Past event time was seen, snapshots don't support adding data out of order: $lastSeenEventTime >= $newEventTime"
-      )
-    }
+    ensureEventTimeDoesntGoBackwards(prev, curr)
 
     val dataColumns = curr.columns
       .filter(
@@ -160,6 +150,23 @@ class SnapshotMergeStrategy(
       .select(resultColumns: _*)
 
     orderColumns(result)
+  }
+
+  def ensureEventTimeDoesntGoBackwards(
+    prev: DataFrame,
+    curr: DataFrame
+  ): Unit = {
+    val lastSeenMaxEventTime =
+      prev.agg(max(vocab.eventTimeColumn)).head().getTimestamp(0)
+    val newMinEventTime =
+      curr.agg(min(vocab.eventTimeColumn)).head().getTimestamp(0)
+
+    if (lastSeenMaxEventTime != null && newMinEventTime != null && lastSeenMaxEventTime
+          .compareTo(newMinEventTime) >= 0) {
+      throw new Exception(
+        s"Past event time was seen, snapshots don't support adding data out of order: $lastSeenMaxEventTime >= $newMinEventTime"
+      )
+    }
   }
 
   override protected def prepare(

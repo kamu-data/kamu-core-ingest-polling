@@ -30,16 +30,11 @@ import dev.kamu.core.ingest.polling.utils.{
   ExecutionResult,
   ZipFiles
 }
-import dev.kamu.core.manifests.{
-  ExternalSourceKind,
-  ReaderKind,
-  RootPollingSource
-}
+import dev.kamu.core.manifests.{ReaderKind, RootPollingSource}
 import dev.kamu.core.manifests.parsing.pureconfig.yaml
 import yaml.defaults._
 import pureconfig.generic.auto._
 import dev.kamu.core.utils.fs._
-import dev.kamu.core.utils.TemplateEngine
 import org.apache.commons.compress.compressors.bzip2.{
   BZip2CompressorInputStream,
   BZip2CompressorOutputStream
@@ -71,41 +66,49 @@ class Ingest(
   private val ingestExecutor =
     new CheckpointingExecutor[IngestCheckpoint](fileSystem)
   private lazy val sparkSession = getSparkSession()
-  private lazy val templateEngine = new TemplateEngine()
 
   def pollAndIngest(): Unit = {
     logger.info(s"Starting ingest")
     logger.info(s"Running with config: $config")
 
     for (task <- config.tasks) {
-      logger.info(s"Processing dataset: ${task.datasetToIngest.id}")
-
-      val source = prepareSource(task.datasetToIngest.rootPollingSource.get)
-
-      val externalSource = sourceFactory.getSource(source.fetch)
+      val source = task.datasetToIngest.rootPollingSource.get
       val cachingBehavior = sourceFactory.getCachingBehavior(source.fetch)
 
-      val downloadCheckpointPath = task.checkpointsPath
-        .resolve(AppConf.downloadCheckpointFileName)
-      val downloadDataPath = task.pollCachePath
-        .resolve(AppConf.downloadDataFileName)
-      val prepCheckpointPath = task.checkpointsPath
-        .resolve(AppConf.prepCheckpointFileName)
-      val prepDataPath = task.pollCachePath
-        .resolve(AppConf.prepDataFileName)
-      val ingestCheckpointPath = task.checkpointsPath
-        .resolve(AppConf.ingestCheckpointFileName)
-      val ingestDataPath = task.dataPath
+      for (externalSource <- sourceFactory.getSource(source.fetch)) {
+        logger.info(
+          s"Processing data source: ${task.datasetToIngest.id}:${externalSource.sourceID}"
+        )
 
-      Seq(task.pollCachePath, task.checkpointsPath, task.dataPath.getParent)
-        .filter(!fileSystem.exists(_))
-        .foreach(fileSystem.mkdirs)
+        val downloadCheckpointPath = task.checkpointsPath
+          .resolve(externalSource.sourceID)
+          .resolve(AppConf.downloadCheckpointFileName)
+        val downloadDataPath = task.pollCachePath
+          .resolve(externalSource.sourceID)
+          .resolve(AppConf.downloadDataFileName)
+        val prepCheckpointPath = task.checkpointsPath
+          .resolve(externalSource.sourceID)
+          .resolve(AppConf.prepCheckpointFileName)
+        val prepDataPath = task.pollCachePath
+          .resolve(externalSource.sourceID)
+          .resolve(AppConf.prepDataFileName)
+        val ingestCheckpointPath = task.checkpointsPath
+          .resolve(externalSource.sourceID)
+          .resolve(AppConf.ingestCheckpointFileName)
+        val ingestDataPath = task.dataPath
 
-      logger.info(s"Stage: polling")
+        Seq(
+          downloadCheckpointPath,
+          downloadDataPath,
+          prepCheckpointPath,
+          prepDataPath,
+          ingestCheckpointPath,
+          ingestDataPath
+        ).map(_.getParent)
+          .filter(!fileSystem.exists(_))
+          .foreach(fileSystem.mkdirs)
 
-      // Some sources can produce multiple results and should be polled multiple times
-      var sourceExhausted = false
-      while (!sourceExhausted) {
+        logger.info(s"Stage: polling")
         val downloadResult = maybeDownload(
           source,
           externalSource,
@@ -113,8 +116,6 @@ class Ingest(
           downloadCheckpointPath,
           downloadDataPath
         )
-
-        sourceExhausted = downloadResult.wasUpToDate || !externalSource.canProduceMultipleResults
 
         logger.info(s"Stage: prep")
         val prepResult = maybePrepare(
@@ -135,37 +136,18 @@ class Ingest(
         )
 
         if (ingestResult.wasUpToDate) {
-          logger.info(s"Dataset is up to date: ${task.datasetToIngest.id}")
+          logger.info(
+            s"Data is up to date: ${task.datasetToIngest.id}:${externalSource.sourceID}"
+          )
         } else {
-          logger.info(s"Dataset was updated: ${task.datasetToIngest.id}")
+          logger.info(
+            s"Data was updated: ${task.datasetToIngest.id}:${externalSource.sourceID}"
+          )
         }
       }
     }
 
     logger.info(s"Finished ingest run")
-  }
-
-  def prepareSource(source: RootPollingSource): RootPollingSource = {
-    val context: Map[String, String] = source.fetch match {
-      case s: ExternalSourceKind.FetchUrl =>
-        Map("source.url" -> s.url.toString)
-      case _ =>
-        Map.empty
-    }
-
-    source.copy(
-      preprocess = source.preprocess.map(
-        step => step.copy(query = renderSQLTemplate(step.query, context))
-      )
-    )
-  }
-
-  def renderSQLTemplate(sql: String, context: Map[String, String]): String = {
-    val newSql = templateEngine.render(sql, context)
-    if (newSql != sql) {
-      logger.info(s"Templating SQL query.\nSource:\n$sql\nResult:\n$newSql")
-    }
-    newSql
   }
 
   def maybeDownload(

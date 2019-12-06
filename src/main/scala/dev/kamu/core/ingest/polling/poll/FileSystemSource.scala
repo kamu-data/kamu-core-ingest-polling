@@ -15,12 +15,11 @@ import dev.kamu.core.ingest.polling.utils.ExecutionResult
 import org.apache.hadoop.fs.{FileSystem, Path}
 
 class FileSystemSource(
+  val sourceID: String,
   fileSystem: FileSystem,
   val path: Path,
   eventTimeSource: EventTimeSource
 ) extends CacheableSource {
-
-  override def sourceID: String = path.toString
 
   override def maybeDownload(
     checkpoint: Option[DownloadCheckpoint],
@@ -40,7 +39,6 @@ class FileSystemSource(
       Instant.ofEpochMilli(fs.getFileStatus(path).getModificationTime)
 
     val needsPull = checkpoint
-      .map(_.asInstanceOf[SimpleDownloadCheckpoint])
       .flatMap(_.lastModified)
       .forall(lastModified.compareTo(_) > 0)
 
@@ -50,7 +48,7 @@ class FileSystemSource(
 
       ExecutionResult(
         wasUpToDate = false,
-        checkpoint = SimpleDownloadCheckpoint(
+        checkpoint = DownloadCheckpoint(
           lastDownloaded = Instant.now(),
           lastModified = Some(lastModified),
           eventTime = eventTimeSource.getEventTime(this)
