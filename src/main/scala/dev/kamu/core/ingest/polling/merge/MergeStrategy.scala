@@ -62,22 +62,15 @@ abstract class MergeStrategy(vocab: DatasetVocabulary) {
         s"Data already contains column: ${vocab.systemTimeColumn}"
       )
 
-    if (eventTime.isEmpty && currRaw.getColumn(vocab.eventTimeColumn).isEmpty)
+    if (eventTime.isEmpty && !currRaw.hasColumn(vocab.eventTimeColumn))
       throw new Exception(
         s"Event time column is neither specified in bulk nor exists in raw data: ${vocab.eventTimeColumn}"
-      )
-
-    if (eventTime.isDefined && currRaw
-          .getColumn(vocab.eventTimeColumn)
-          .isDefined)
-      throw new Exception(
-        s"Data already contains column: ${vocab.eventTimeColumn}"
       )
 
     val currWithTimes = currRaw
       .withColumn(vocab.systemTimeColumn, lit(systemTime))
       .maybeTransform(
-        eventTime.isDefined,
+        !currRaw.hasColumn(vocab.eventTimeColumn),
         _.withColumn(vocab.eventTimeColumn, lit(eventTime.get))
       )
 

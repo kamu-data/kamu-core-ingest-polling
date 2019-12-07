@@ -10,7 +10,6 @@ package dev.kamu.core.ingest.polling.poll
 
 import java.sql.Timestamp
 
-import dev.kamu.core.ingest.polling.poll
 import dev.kamu.core.manifests.{CachingKind, EventTimeKind, ExternalSourceKind}
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
@@ -20,9 +19,7 @@ class SourceFactory(fileSystem: FileSystem, getSystemTime: () => Timestamp) {
 
   def getSource(kind: ExternalSourceKind): Seq[CacheableSource] = {
     val eventTimeSource = kind.eventTime match {
-      case None =>
-        new poll.EventTimeSource.NoEventTime()
-      case Some(_: EventTimeKind.FromSystemTime) =>
+      case None | Some(_: EventTimeKind.FromSystemTime) =>
         new EventTimeSource.FromSystemTime(getSystemTime)
       case Some(e: EventTimeKind.FromPath) =>
         new EventTimeSource.FromPath(e.pattern, e.timestampFormat)
