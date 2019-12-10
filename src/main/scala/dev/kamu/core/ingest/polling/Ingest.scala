@@ -30,7 +30,11 @@ import dev.kamu.core.ingest.polling.utils.{
   ExecutionResult,
   ZipFiles
 }
-import dev.kamu.core.manifests.{ReaderKind, RootPollingSource}
+import dev.kamu.core.manifests.{
+  DatasetVocabulary,
+  ReaderKind,
+  RootPollingSource
+}
 import dev.kamu.core.manifests.parsing.pureconfig.yaml
 import yaml.defaults._
 import pureconfig.generic.auto._
@@ -132,7 +136,8 @@ class Ingest(
           prepResult.checkpoint,
           prepDataPath,
           ingestCheckpointPath,
-          ingestDataPath
+          ingestDataPath,
+          DatasetVocabulary()
         )
 
         if (ingestResult.wasUpToDate) {
@@ -243,7 +248,8 @@ class Ingest(
     prepCheckpoint: PrepCheckpoint,
     prepDataPath: Path,
     ingestCheckpointPath: Path,
-    ingestDataPath: Path
+    ingestDataPath: Path,
+    vocab: DatasetVocabulary
   ): ExecutionResult[IngestCheckpoint] = {
     ingestExecutor.execute(
       checkpointPath = ingestCheckpointPath,
@@ -260,7 +266,8 @@ class Ingest(
             source,
             prepCheckpoint.eventTime,
             prepDataPath,
-            ingestDataPath
+            ingestDataPath,
+            vocab
           )
 
           ExecutionResult(
@@ -280,11 +287,15 @@ class Ingest(
     source: RootPollingSource,
     eventTime: Option[Instant],
     filePath: Path,
-    outPath: Path
+    outPath: Path,
+    vocab: DatasetVocabulary
   ): Unit = {
     logger.info(
       s"Ingesting the data: in=$filePath, out=$outPath, format=${source.read}"
     )
+
+    // Needed to make Spark re-read files that might've changed between ingest runs
+    spark.sqlContext.clearCache()
 
     val reader = source.read match {
       case _: ReaderKind.Shapefile =>
@@ -295,10 +306,11 @@ class Ingest(
         readGeneric _
     }
 
-    reader(spark, source, filePath)
+    reader(spark, source, filePath, vocab)
+      .transform(checkForErrors(vocab))
       .transform(normalizeSchema(source))
       .transform(preprocess(source))
-      .transform(mergeWithExisting(source, eventTime, outPath))
+      .transform(mergeWithExisting(source, eventTime, outPath, vocab))
       .maybeTransform(source.coalesce != 0, _.coalesce(source.coalesce))
       .write
       .mode(SaveMode.Append)
@@ -308,17 +320,22 @@ class Ingest(
   def readGeneric(
     spark: SparkSession,
     source: RootPollingSource,
-    filePath: Path
+    filePath: Path,
+    vocab: DatasetVocabulary
   ): DataFrame = {
     val fmt = source.read.asGeneric().asInstanceOf[ReaderKind.Generic]
     val reader = spark.read
 
-    if (fmt.schema.nonEmpty)
-      reader.schema(fmt.schema.mkString(", "))
+    if (fmt.schema.nonEmpty) {
+      val fullSchema = fmt.schema :+ s"${vocab.corruptRecordColumn} STRING"
+      reader.schema(fullSchema.mkString(", "))
+    }
 
     reader
       .format(fmt.name)
       .options(fmt.options)
+      .option("mode", "PERMISSIVE")
+      .option("columnNameOfCorruptRecord", vocab.corruptRecordColumn)
       .load(filePath.toString)
   }
 
@@ -326,7 +343,8 @@ class Ingest(
   def readShapefile(
     spark: SparkSession,
     source: RootPollingSource,
-    filePath: Path
+    filePath: Path,
+    vocab: DatasetVocabulary
   ): DataFrame = {
     val fmt = source.read.asInstanceOf[ReaderKind.Shapefile]
 
@@ -362,7 +380,8 @@ class Ingest(
   def readGeoJSON(
     spark: SparkSession,
     source: RootPollingSource,
-    filePath: Path
+    filePath: Path,
+    vocab: DatasetVocabulary
   ): DataFrame = {
     val rdd = GeoJsonReader.readToGeometryRDD(
       spark.sparkContext,
@@ -377,6 +396,24 @@ class Ingest(
         "geometry",
         functions.callUDF("ST_GeomFromWKT", functions.col("geometry"))
       )
+  }
+
+  def checkForErrors(vocab: DatasetVocabulary)(df: DataFrame): DataFrame = {
+    df.getColumn(vocab.corruptRecordColumn) match {
+      case None =>
+        df
+      case Some(col) =>
+        val dfCached = df.cache()
+        val corrupt = dfCached.select(col).filter(col.isNotNull)
+        if (corrupt.count() > 0) {
+          throw new Exception(
+            "Corrupt records detected:\n" + corrupt
+              .showString(numRows = 20, truncate = 0)
+          )
+        } else {
+          dfCached.drop(col)
+        }
+    }
   }
 
   def normalizeSchema(source: RootPollingSource)(df: DataFrame): DataFrame = {
@@ -419,12 +456,13 @@ class Ingest(
   def mergeWithExisting(
     source: RootPollingSource,
     eventTime: Option[Instant],
-    outPath: Path
+    outPath: Path,
+    vocab: DatasetVocabulary
   )(
     curr: DataFrame
   ): DataFrame = {
     val spark = curr.sparkSession
-    val mergeStrategy = MergeStrategy(source.merge)
+    val mergeStrategy = MergeStrategy(source.merge, vocab)
 
     val prev =
       if (fileSystem.exists(outPath))

@@ -18,16 +18,20 @@ import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.lit
 
 object MergeStrategy {
-  def apply(kind: manifests.MergeStrategyKind): MergeStrategy = {
+  def apply(
+    kind: manifests.MergeStrategyKind,
+    vocab: DatasetVocabulary
+  ): MergeStrategy = {
     kind match {
       case _: manifests.MergeStrategyKind.Append =>
-        new AppendMergeStrategy()
+        new AppendMergeStrategy(vocab)
       case c: manifests.MergeStrategyKind.Ledger =>
-        new LedgerMergeStrategy(c.primaryKey)
+        new LedgerMergeStrategy(c.primaryKey, vocab)
       case c: manifests.MergeStrategyKind.Snapshot =>
         new SnapshotMergeStrategy(
           primaryKey = c.primaryKey,
-          compareColumns = c.compareColumns
+          compareColumns = c.compareColumns,
+          vocab
         )
       case _ =>
         throw new NotImplementedError(s"Unsupported strategy: $kind")

@@ -147,6 +147,7 @@ class SnapshotMergeStrategy(
           )
           .otherwise(vocab.obsvChanged)
       )
+      .dropDuplicates(primaryKey)
       .select(resultColumns: _*)
 
     orderColumns(result)
@@ -175,6 +176,11 @@ class SnapshotMergeStrategy(
     systemTime: Timestamp,
     eventTime: Option[Timestamp]
   ): (DataFrame, DataFrame, Set[String], Set[String]) = {
+    if (currRaw.hasColumn(vocab.observationColumn))
+      throw new Exception(
+        s"Data already contains column: ${vocab.observationColumn}"
+      )
+
     val (prev, curr, addedColumns, removedColumns) =
       super.prepare(prevRaw, currRaw, systemTime, eventTime)
 
@@ -183,10 +189,11 @@ class SnapshotMergeStrategy(
         !prev.hasColumn(vocab.observationColumn),
         _.withColumn(vocab.observationColumn, lit(vocab.obsvAdded))
       ),
-      curr.maybeTransform(
-        !curr.hasColumn(vocab.observationColumn),
-        _.withColumn(vocab.observationColumn, lit(vocab.obsvAdded))
-      ),
+      curr
+        .maybeTransform(
+          !curr.hasColumn(vocab.observationColumn),
+          _.withColumn(vocab.observationColumn, lit(vocab.obsvAdded))
+        ),
       addedColumns,
       removedColumns - vocab.observationColumn
     )

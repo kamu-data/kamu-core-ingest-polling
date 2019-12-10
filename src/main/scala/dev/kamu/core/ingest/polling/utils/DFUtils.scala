@@ -8,11 +8,24 @@
 
 package dev.kamu.core.ingest.polling.utils
 
-import org.apache.spark.sql.{Column, DataFrame, RelationalGroupedDataset}
+import org.apache.spark.sql.{
+  Column,
+  DFHelper,
+  DataFrame,
+  RelationalGroupedDataset
+}
 
 object DFUtils {
 
   implicit class DataFrameEx(val df: DataFrame) {
+
+    def showString(
+      numRows: Int = 20,
+      truncate: Int = 20,
+      vertical: Boolean = false
+    ): String = {
+      DFHelper.showString(df, numRows, truncate, vertical)
+    }
 
     def maybeTransform(
       condition: Boolean,
