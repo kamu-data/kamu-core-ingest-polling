@@ -44,7 +44,7 @@ class LedgerMergeStrategy(
     systemTime: Timestamp,
     eventTime: Option[Timestamp]
   ): DataFrame = {
-    if (eventTime.isDefined)
+    if (!currRaw.hasColumn(vocab.eventTimeColumn))
       throw new Exception("Event time must be contained within ledger data")
 
     val (prev, curr, _, _) = prepare(prevRaw, currRaw, systemTime, eventTime)
