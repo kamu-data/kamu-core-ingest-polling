@@ -28,13 +28,17 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), "I", 4, "D", "d")
         )
       )
-      .toDF("systemTime", "observed", "id", "name", "data")
+      .toDF("system_time", "observed", "id", "name", "data")
 
   test("asOf latest") {
     val series = testSeries
 
     val actual = TimeSeriesUtils
-      .asOf(series, Seq("id"))
+      .asOf(
+        series,
+        Seq("id"),
+        lastUpdatedSystemTimeColumn = Some("last_updated_sys")
+      )
       .orderBy("id")
 
     val expected = sc
@@ -45,7 +49,7 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
           (4, "D", "d", ts(3))
         )
       )
-      .toDF("id", "name", "data", "lastUpdatedSys")
+      .toDF("id", "name", "data", "last_updated_sys")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -54,7 +58,12 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
     val series = testSeries
 
     val actual = TimeSeriesUtils
-      .asOf(series, Seq("id"), Some(ts(1)))
+      .asOf(
+        series,
+        Seq("id"),
+        Some(ts(1)),
+        lastUpdatedSystemTimeColumn = Some("last_updated_sys")
+      )
       .orderBy("id")
 
     val expected = sc
@@ -65,7 +74,7 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
           (3, "C", "z", ts(0))
         )
       )
-      .toDF("id", "name", "data", "lastUpdatedSys")
+      .toDF("id", "name", "data", "last_updated_sys")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -84,10 +93,14 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), "I", 2, "D", "d")
         )
       )
-      .toDF("systemTime", "observed", "key", "name", "data")
+      .toDF("system_time", "observed", "key", "name", "data")
 
     val actual = TimeSeriesUtils
-      .asOf(series, Seq("key", "name"))
+      .asOf(
+        series,
+        Seq("key", "name"),
+        lastUpdatedSystemTimeColumn = Some("last_updated_sys")
+      )
       .orderBy("key", "name")
 
     val expected = sc
@@ -98,7 +111,7 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
           (2, "D", "d", ts(3))
         )
       )
-      .toDF("key", "name", "data", "lastUpdatedSys")
+      .toDF("key", "name", "data", "last_updated_sys")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }

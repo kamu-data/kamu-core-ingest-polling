@@ -26,13 +26,13 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(2), 3, "c")
         )
       )
-      .toDF("eventTime", "id", "data")
+      .toDF("event_time", "id", "data")
 
     val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
       .merge(None, curr, ts(3), None)
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -42,7 +42,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), ts(2), 3, "c")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data")
+      .toDF("system_time", "event_time", "id", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -56,7 +56,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), ts(2), 3, "c")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data")
+      .toDF("system_time", "event_time", "id", "data")
 
     val curr = sc
       .parallelize(
@@ -69,13 +69,13 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(5), 6, "f")
         )
       )
-      .toDF("eventTime", "id", "data")
+      .toDF("event_time", "id", "data")
 
     val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(6), None)
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -85,7 +85,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(6), ts(5), 6, "f")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data")
+      .toDF("system_time", "event_time", "id", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -99,7 +99,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), ts(2), 3, "c")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data")
+      .toDF("system_time", "event_time", "id", "data")
 
     val curr = sc
       .parallelize(
@@ -112,13 +112,13 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(5), 6, "z", "f")
         )
       )
-      .toDF("eventTime", "id", "extra", "data")
+      .toDF("event_time", "id", "extra", "data")
 
     val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(6), None)
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -128,7 +128,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(6), ts(5), 6, "f", "z")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data", "extra")
+      .toDF("system_time", "event_time", "id", "data", "extra")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -143,7 +143,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), ts(2), 3, "z", "c")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "extra", "data")
+      .toDF("system_time", "event_time", "id", "extra", "data")
 
     val curr = sc
       .parallelize(
@@ -156,13 +156,13 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(5), 6, "f")
         )
       )
-      .toDF("eventTime", "id", "data")
+      .toDF("event_time", "id", "data")
 
     val strategy = new LedgerMergeStrategy(Vector("id"))
 
     val actual = strategy
       .merge(Some(prev), curr, ts(6), None)
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -172,7 +172,7 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
           (ts(6), ts(5), 6, null, "f")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "extra", "data")
+      .toDF("system_time", "event_time", "id", "extra", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }

@@ -86,7 +86,6 @@ class SnapshotMergeStrategy(
 
     val prevProj = TimeSeriesUtils
       .asOf(prev, primaryKey)
-      .drop(vocab.lastUpdatedTimeSystemColumn)
 
     // We consider data changed when
     // either both columns exist and have different values

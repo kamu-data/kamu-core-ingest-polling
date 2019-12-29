@@ -119,8 +119,8 @@ class IngestGeoJSONTest extends FunSuite with IngestSuite {
           )
         )
         .toDF(
-          "systemTime",
-          "eventTime",
+          "system_time",
+          "event_time",
           "observed",
           "geometry",
           "id",

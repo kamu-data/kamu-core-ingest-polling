@@ -57,7 +57,7 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
       writeFile(inputPath, inputData)
 
       val actual = ingest(tempDir, dataset, ts(0))
-        .orderBy("systemTime", "id")
+        .orderBy("system_time", "id")
 
       val expected = sc
         .parallelize(
@@ -68,8 +68,8 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
           )
         )
         .toDF(
-          "systemTime",
-          "eventTime",
+          "system_time",
+          "event_time",
           "observed",
           "id",
           "name",
@@ -129,7 +129,7 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
       writeFile(inputPath, inputData2)
 
       val actual = ingest(tempDir, dataset, ts(1))
-        .orderBy("systemTime", "eventTime", "id")
+        .orderBy("system_time", "event_time", "id")
 
       val expected = sc
         .parallelize(
@@ -143,8 +143,8 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
           )
         )
         .toDF(
-          "systemTime",
-          "eventTime",
+          "system_time",
+          "event_time",
           "observed",
           "id",
           "name",

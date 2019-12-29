@@ -26,13 +26,13 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
           (ts(0), 3, "c")
         )
       )
-      .toDF("eventTime", "id", "data")
+      .toDF("event_time", "id", "data")
 
     val strategy = new AppendMergeStrategy()
 
     val actual = strategy
       .merge(None, curr, ts(1), None)
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -42,7 +42,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
           (ts(1), ts(0), 3, "c")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data")
+      .toDF("system_time", "event_time", "id", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -56,7 +56,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
           (ts(1), ts(0), 3, "c")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data")
+      .toDF("system_time", "event_time", "id", "data")
 
     val curr = sc
       .parallelize(
@@ -72,7 +72,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
 
     val actual = strategy
       .merge(Some(prev), curr, ts(3), Some(ts(2)))
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -82,7 +82,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), ts(2), 6, "f")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data")
+      .toDF("system_time", "event_time", "id", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -96,7 +96,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
           (ts(1), ts(0), 3, "c")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data")
+      .toDF("system_time", "event_time", "id", "data")
 
     val curr = sc
       .parallelize(
@@ -112,7 +112,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
 
     val actual = strategy
       .merge(Some(prev), curr, ts(3), Some(ts(2)))
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -122,7 +122,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), ts(2), 6, "f", "z")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "data", "extra")
+      .toDF("system_time", "event_time", "id", "data", "extra")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -137,7 +137,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
           (ts(1), ts(0), 3, "z", "c")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "extra", "data")
+      .toDF("system_time", "event_time", "id", "extra", "data")
 
     val curr = sc
       .parallelize(
@@ -153,7 +153,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
 
     val actual = strategy
       .merge(Some(prev), curr, ts(3), Some(ts(2)))
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -163,7 +163,7 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
           (ts(3), ts(2), 6, null, "f")
         )
       )
-      .toDF("systemTime", "eventTime", "id", "extra", "data")
+      .toDF("system_time", "event_time", "id", "extra", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }

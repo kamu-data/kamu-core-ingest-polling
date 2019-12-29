@@ -27,7 +27,7 @@ object TimeSeriesUtils {
     *
     * Time series data is expected to have following columns:
     *   - observation
-    *   - systemTime
+    *   - system_time
     *   - specified primary key
     *
     * The system time column is replaced with last updated time column.
@@ -38,6 +38,7 @@ object TimeSeriesUtils {
     series: DataFrame,
     primaryKey: Seq[String],
     systemTime: Option[Timestamp] = None,
+    lastUpdatedSystemTimeColumn: Option[String] = None,
     vocab: DatasetVocabulary = DatasetVocabulary()
   ): DataFrame = {
     val pk = primaryKey.toVector
@@ -51,15 +52,18 @@ object TimeSeriesUtils {
     val aggregates = dataColumns
       .map(c => last(c).as(aggAlias(c)))
 
-    val resultColumns = pk.map(col) ++ (
-      dataColumns
-        .filter(_ != vocab.observationColumn)
-        .filter(_ != vocab.systemTimeColumn)
-        .map(c => col(aggAlias(c)).as(c))
-        :+
-          col(aggAlias(vocab.systemTimeColumn))
-            .as(vocab.lastUpdatedTimeSystemColumn)
-    )
+    val resultDataColumns_t = dataColumns
+      .filter(_ != vocab.observationColumn)
+      .filter(_ != vocab.systemTimeColumn)
+      .map(c => col(aggAlias(c)).as(c))
+
+    val resultDataColumns =
+      if (lastUpdatedSystemTimeColumn.isDefined)
+        resultDataColumns_t :+ col(aggAlias(vocab.systemTimeColumn))
+          .as(lastUpdatedSystemTimeColumn.get)
+      else resultDataColumns_t
+
+    val resultColumns = pk.map(col) ++ resultDataColumns
 
     series
       .when(_ => systemTime.isDefined)(

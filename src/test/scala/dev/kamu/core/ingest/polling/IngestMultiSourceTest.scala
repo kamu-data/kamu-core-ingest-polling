@@ -79,7 +79,7 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
 
       // Second ingest should ignore modified files as we cache forever
       val actual = ingest(tempDir, dataset, ts(0))
-        .orderBy("systemTime", "eventTime", "id")
+        .orderBy("system_time", "event_time", "id")
 
       val expected = sc
         .parallelize(
@@ -92,7 +92,7 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
             (ts(0), ts(2001, 2, 1), "I", 4, "dan", 100)
           )
         )
-        .toDF("systemTime", "eventTime", "observed", "id", "name", "balance")
+        .toDF("system_time", "event_time", "observed", "id", "name", "balance")
 
       assertDataFrameEquals(expected, actual, ignoreNullable = true)
     })

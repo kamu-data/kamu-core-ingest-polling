@@ -28,8 +28,8 @@ case class EmployeeV2(
 )
 
 case class EmployeeEvent(
-  systemTime: Timestamp,
-  eventTime: Timestamp,
+  system_time: Timestamp,
+  event_time: Timestamp,
   observed: String,
   id: Int,
   name: String,
@@ -37,8 +37,8 @@ case class EmployeeEvent(
 )
 
 case class EmployeeEventV2(
-  systemTime: Timestamp,
-  eventTime: Timestamp,
+  system_time: Timestamp,
+  event_time: Timestamp,
   observed: String,
   id: Int,
   name: String,
@@ -70,7 +70,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
     val actual = strategy
       .merge(None, curr, t_s, Some(t_e))
       .as[EmployeeEvent]
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -81,7 +81,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
         )
       )
       .toDS
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     assertDatasetEquals(expected, actual)
   }
@@ -148,7 +148,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
     val actual = strategy
       .merge(Some(prev), data2, t_s2, Some(t_e2))
       .as[EmployeeEvent]
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -159,7 +159,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
         )
       )
       .toDS()
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     assertDatasetEquals(expected, actual)
   }
@@ -200,7 +200,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
     val actual = strategy
       .merge(Some(prev), data2, t_s2, Some(t_e2))
       .as[EmployeeEvent]
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -213,7 +213,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
         )
       )
       .toDS()
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     assertDatasetEquals(expected, actual)
   }
@@ -288,7 +288,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
     val actual = strategy
       .merge(Some(prev), data2, t_s2, Some(t_e2))
       .as[EmployeeEventV2]
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -300,7 +300,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
         )
       )
       .toDS()
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     assertDatasetEquals(expected, actual)
   }
@@ -339,7 +339,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
     val actual = strategy
       .merge(Some(prev), data2, t_s2, Some(t_e2))
       .as[EmployeeEventV2]
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
@@ -351,7 +351,7 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
         )
       )
       .toDS()
-      .orderBy("systemTime", "eventTime", "id")
+      .orderBy("system_time", "event_time", "id")
 
     assertDatasetEquals(expected, actual)
   }

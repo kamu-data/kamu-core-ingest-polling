@@ -32,6 +32,7 @@ import dev.kamu.core.ingest.polling.utils.{
 }
 import dev.kamu.core.manifests.{
   DatasetVocabulary,
+  DatasetVocabularyOverrides,
   ReaderKind,
   RootPollingSource
 }
@@ -137,7 +138,9 @@ class Ingest(
           prepDataPath,
           ingestCheckpointPath,
           ingestDataPath,
-          DatasetVocabulary()
+          task.datasetToIngest.vocabulary
+            .getOrElse(DatasetVocabularyOverrides())
+            .asDatasetVocabulary()
         )
 
         if (ingestResult.wasUpToDate) {
