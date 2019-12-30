@@ -329,10 +329,8 @@ class Ingest(
     val fmt = source.read.asGeneric().asInstanceOf[ReaderKind.Generic]
     val reader = spark.read
 
-    if (fmt.schema.nonEmpty) {
-      val fullSchema = fmt.schema :+ s"${vocab.corruptRecordColumn} STRING"
-      reader.schema(fullSchema.mkString(", "))
-    }
+    if (fmt.schema.nonEmpty)
+      reader.schema(fmt.schema.mkString(", "))
 
     reader
       .format(fmt.name)
