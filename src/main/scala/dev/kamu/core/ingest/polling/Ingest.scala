@@ -30,13 +30,10 @@ import dev.kamu.core.ingest.polling.utils.{
   ExecutionResult,
   ZipFiles
 }
-import dev.kamu.core.manifests.{
-  DatasetVocabulary,
-  DatasetVocabularyOverrides,
-  ReaderKind,
-  RootPollingSource
-}
+import dev.kamu.core.manifests.infra.MetadataChainFS
+import dev.kamu.core.manifests._
 import dev.kamu.core.manifests.parsing.pureconfig.yaml
+import dev.kamu.core.utils.{DataFrameDigestSHA1, ManualClock}
 import yaml.defaults._
 import pureconfig.generic.auto._
 import dev.kamu.core.utils.fs._
@@ -50,18 +47,27 @@ import org.apache.log4j.LogManager
 import org.apache.spark.sql._
 import org.datasyslab.geospark.formatMapper.GeoJsonReader
 import org.datasyslab.geospark.formatMapper.shapefileParser.ShapefileReader
+import org.datasyslab.geosparksql.UDF.UdfRegistrator
 import org.datasyslab.geosparksql.utils.{Adapter, GeoSparkSQLRegistrator}
+import spire.math.Interval
+
+import scala.sys.process.Process
 
 class Ingest(
   config: AppConf,
   hadoopConf: org.apache.hadoop.conf.Configuration,
-  getSparkSession: () => SparkSession,
-  getSystemTime: () => Timestamp
+  systemClock: ManualClock,
+  getSparkSession: () => SparkSession
 ) {
   private val logger = LogManager.getLogger(getClass.getName)
 
   private val fileSystem = FileSystem.get(hadoopConf)
-  private val sourceFactory = new SourceFactory(fileSystem, getSystemTime)
+
+  // TODO: Disabling CRCs causes internal exception in Spark
+  //fileSystem.setWriteChecksum(false)
+  //fileSystem.setVerifyChecksum(false)
+
+  private val sourceFactory = new SourceFactory(fileSystem, systemClock)
   private val prepStepFactory = new PrepStepFactory(fileSystem)
   private val conversionStepFactory = new ConversionStepFactory()
   private val downloadExecutor =
@@ -76,13 +82,21 @@ class Ingest(
     logger.info(s"Starting ingest")
     logger.info(s"Running with config: $config")
 
+    systemClock.advance()
+
     for (task <- config.tasks) {
-      val source = task.datasetToIngest.rootPollingSource.get
+      val metaChain = new MetadataChainFS(fileSystem, task.datasetPath)
+      val blocks = metaChain.getBlocks()
+
+      val summary = metaChain.getSummary()
+      val source = blocks.flatMap(_.rootPollingSource).last
+
       val cachingBehavior = sourceFactory.getCachingBehavior(source.fetch)
 
       for (externalSource <- sourceFactory.getSource(source.fetch)) {
         logger.info(
-          s"Processing data source: ${task.datasetToIngest.id}:${externalSource.sourceID}"
+          s"Processing data source: ${task.datasetToIngest}:${externalSource.sourceID}"
+            + s" (${systemClock.instant()})"
         )
 
         val downloadCheckpointPath = task.checkpointsPath
@@ -138,18 +152,24 @@ class Ingest(
           prepDataPath,
           ingestCheckpointPath,
           ingestDataPath,
-          task.datasetToIngest.vocabulary
+          summary.vocabulary
             .getOrElse(DatasetVocabularyOverrides())
             .asDatasetVocabulary()
         )
 
+        // TODO: Atomicity?
+        maybeCommitMetadata(
+          metaChain,
+          ingestResult
+        )
+
         if (ingestResult.wasUpToDate) {
           logger.info(
-            s"Data is up to date: ${task.datasetToIngest.id}:${externalSource.sourceID}"
+            s"Data is up to date: ${task.datasetToIngest}:${externalSource.sourceID}"
           )
         } else {
           logger.info(
-            s"Data was updated: ${task.datasetToIngest.id}:${externalSource.sourceID}"
+            s"Data was updated: ${task.datasetToIngest}:${externalSource.sourceID}"
           )
         }
       }
@@ -238,7 +258,7 @@ class Ingest(
             checkpoint = PrepCheckpoint(
               downloadTimestamp = downloadCheckpoint.lastDownloaded,
               eventTime = downloadCheckpoint.eventTime,
-              lastPrepared = Instant.now()
+              lastPrepared = systemClock.instant()
             )
           )
         }
@@ -264,7 +284,7 @@ class Ingest(
             checkpoint = storedCheckpoint.get
           )
         } else {
-          ingest(
+          val dataHash = ingest(
             getSparkSubSession(sparkSession),
             source,
             prepCheckpoint.eventTime,
@@ -277,12 +297,34 @@ class Ingest(
             wasUpToDate = false,
             checkpoint = IngestCheckpoint(
               prepTimestamp = prepCheckpoint.lastPrepared,
-              lastIngested = Instant.now()
+              lastIngested = systemClock.instant(),
+              outputDataHash = dataHash
             )
           )
         }
       }
     )
+  }
+
+  def maybeCommitMetadata(
+    metaChain: MetadataChainFS,
+    ingestResult: ExecutionResult[IngestCheckpoint]
+  ): Unit = {
+    // TODO: Should we commit anyway to advance dataset clock?
+    if (ingestResult.wasUpToDate)
+      return
+
+    // TODO: Avoid loading blocks again
+    val block = metaChain.append(
+      MetadataBlock(
+        prevBlockHash = metaChain.getBlocks().last.blockHash,
+        systemTime = systemClock.instant(),
+        outputDataInterval = Interval.point(systemClock.instant()),
+        outputDataHash = ingestResult.checkpoint.outputDataHash
+      )
+    )
+
+    logger.info(s"Committing new metadata block: ${block.blockHash}")
   }
 
   def ingest(
@@ -292,7 +334,7 @@ class Ingest(
     filePath: Path,
     outPath: Path,
     vocab: DatasetVocabulary
-  ): Unit = {
+  ): String = {
     logger.info(
       s"Ingesting the data: in=$filePath, out=$outPath, format=${source.read}"
     )
@@ -309,15 +351,20 @@ class Ingest(
         readGeneric _
     }
 
-    reader(spark, source, filePath, vocab)
+    val result = reader(spark, source, filePath, vocab)
       .transform(checkForErrors(vocab))
       .transform(normalizeSchema(source))
       .transform(preprocess(source))
       .transform(mergeWithExisting(source, eventTime, outPath, vocab))
       .maybeTransform(source.coalesce != 0, _.coalesce(source.coalesce))
-      .write
+
+    val hash = computeHash(result)
+
+    result.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
+
+    hash
   }
 
   def readGeneric(
@@ -442,11 +489,16 @@ class Ingest(
     df.createTempView("input")
 
     for (step <- source.preprocess) {
-      val tempResult = spark.sql(step.query)
-      if (step.view == "output")
-        return tempResult
-      else
-        tempResult.createTempView(s"`${step.view}`")
+      step match {
+        case s: ProcessingStepKind.SparkSQL =>
+          val tempResult = spark.sql(s.query)
+          if (s.alias.isEmpty || s.alias.get == "output")
+            return tempResult
+          else
+            tempResult.createTempView(s"`${s.alias.get}`")
+        case _ =>
+          throw new RuntimeException(s"Unsupported processing step kind: $step")
+      }
     }
 
     throw new RuntimeException(
@@ -474,15 +526,20 @@ class Ingest(
     mergeStrategy.merge(
       prev,
       curr,
-      getSystemTime(),
+      systemClock.timestamp(),
       eventTime.map(Timestamp.from)
     )
   }
 
   def getSparkSubSession(sparkSession: SparkSession): SparkSession = {
     val subSession = sparkSession.newSession()
-    GeoSparkSQLRegistrator.registerAll(subSession)
+    UdfRegistrator.registerAll(subSession)
     subSession
+  }
+
+  def computeHash(df: DataFrame): String = {
+    // TODO: drop system time column first?
+    new DataFrameDigestSHA1().digest(df)
   }
 
 }

@@ -8,9 +8,10 @@
 
 package dev.kamu.core.ingest.polling.poll
 
-import java.sql.Timestamp
 import java.text.SimpleDateFormat
 import java.time.Instant
+
+import dev.kamu.core.utils.Clock
 
 trait EventTimeSource {
   def getEventTime(source: FileSystemSource): Option[Instant] =
@@ -26,9 +27,9 @@ object EventTimeSource {
 
   class NoEventTime extends EventTimeSource
 
-  class FromSystemTime(getSystemTime: () => Timestamp) extends EventTimeSource {
+  class FromSystemTime(systemClock: Clock) extends EventTimeSource {
     override def getEventTimeDefault(): Option[Instant] = {
-      Some(getSystemTime().toInstant)
+      Some(systemClock.instant())
     }
   }
 

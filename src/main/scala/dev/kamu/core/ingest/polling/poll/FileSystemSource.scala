@@ -12,11 +12,13 @@ import java.io.InputStream
 import java.time.Instant
 
 import dev.kamu.core.ingest.polling.utils.ExecutionResult
+import dev.kamu.core.utils.Clock
 import org.apache.hadoop.fs.{FileSystem, Path}
 
 class FileSystemSource(
   val sourceID: String,
   fileSystem: FileSystem,
+  systemClock: Clock,
   val path: Path,
   eventTimeSource: EventTimeSource
 ) extends CacheableSource {
@@ -49,7 +51,7 @@ class FileSystemSource(
       ExecutionResult(
         wasUpToDate = false,
         checkpoint = DownloadCheckpoint(
-          lastDownloaded = Instant.now(),
+          lastDownloaded = systemClock.instant(),
           lastModified = Some(lastModified),
           eventTime = eventTimeSource.getEventTime(this)
         )

@@ -10,9 +10,12 @@ package dev.kamu.core.ingest.polling
 
 import java.io.PrintWriter
 import java.sql.Timestamp
+import java.time.ZoneOffset
 import java.util.UUID
 
 import dev.kamu.core.manifests._
+import dev.kamu.core.manifests.infra.MetadataChainFS
+import dev.kamu.core.utils.ManualClock
 import dev.kamu.core.utils.fs._
 import dev.kamu.core.utils.test.KamuDataFrameSuite
 import org.apache.hadoop
@@ -45,9 +48,16 @@ trait IngestSuite extends KamuDataFrameSuite { self: Suite =>
 
   def ingest(
     tempDir: Path,
-    dataset: Dataset,
+    dataset: DatasetSnapshot,
     systemTime: Timestamp
   ) = {
+    val systemClock = new ManualClock(
+      Some(java.time.Clock.fixed(systemTime.toInstant, ZoneOffset.UTC))
+    )
+
+    val metaDir = tempDir.resolve("dataset")
+    val metaChain = new MetadataChainFS(fileSystem, metaDir)
+    metaChain.init(dataset, systemClock.instant())
 
     val outputDir = tempDir.resolve("data")
 
@@ -55,9 +65,10 @@ trait IngestSuite extends KamuDataFrameSuite { self: Suite =>
       tasks = Vector(
         IngestTask(
           checkpointsPath = tempDir.resolve("checkpoints"),
-          pollCachePath = tempDir.resolve("poll"),
+          pollCachePath = tempDir.resolve("checkpoints"),
           dataPath = outputDir,
-          datasetToIngest = dataset
+          datasetToIngest = dataset.id,
+          datasetPath = metaDir
         )
       )
     )
@@ -66,7 +77,7 @@ trait IngestSuite extends KamuDataFrameSuite { self: Suite =>
       config = conf,
       hadoopConf = new hadoop.conf.Configuration(),
       getSparkSession = () => spark,
-      getSystemTime = () => systemTime
+      systemClock = systemClock
     )
 
     ingest.pollAndIngest()

@@ -43,7 +43,7 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
       writeFile(inputPath1, inputData1)
       writeFile(inputPath2, inputData2)
 
-      val dataset = yaml.load[Dataset](s"""
+      val dataset = yaml.load[DatasetSnapshot](s"""
           |id: dev.kamu.test
           |rootPollingSource:
           |  fetch:
@@ -62,7 +62,7 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
           |    - name STRING
           |    - balance INT
           |  preprocess:
-          |  - view: output
+          |  - kind: sparkSQL
           |    query: SELECT id, name, balance FROM input
           |  merge:
           |    kind: snapshot

@@ -8,19 +8,18 @@
 
 package dev.kamu.core.ingest.polling.poll
 
-import java.sql.Timestamp
-
 import dev.kamu.core.manifests.{CachingKind, EventTimeKind, ExternalSourceKind}
+import dev.kamu.core.utils.Clock
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
 
-class SourceFactory(fileSystem: FileSystem, getSystemTime: () => Timestamp) {
+class SourceFactory(fileSystem: FileSystem, systemClock: Clock) {
   private val logger = LogManager.getLogger(getClass.getName)
 
   def getSource(kind: ExternalSourceKind): Seq[CacheableSource] = {
     val eventTimeSource = kind.eventTime match {
       case None | Some(_: EventTimeKind.FromSystemTime) =>
-        new EventTimeSource.FromSystemTime(getSystemTime)
+        new EventTimeSource.FromSystemTime(systemClock)
       case Some(e: EventTimeKind.FromPath) =>
         new EventTimeSource.FromPath(e.pattern, e.timestampFormat)
       case _ =>
@@ -46,6 +45,7 @@ class SourceFactory(fileSystem: FileSystem, getSystemTime: () => Timestamp) {
         Seq(
           new HTTPSource(
             "primary",
+            systemClock,
             kind.url,
             eventTimeSource
           )
@@ -54,6 +54,7 @@ class SourceFactory(fileSystem: FileSystem, getSystemTime: () => Timestamp) {
         Seq(
           new FTPSource(
             "primary",
+            systemClock,
             kind.url,
             eventTimeSource
           )
@@ -64,6 +65,7 @@ class SourceFactory(fileSystem: FileSystem, getSystemTime: () => Timestamp) {
           new FileSystemSource(
             "primary",
             fileSystem,
+            systemClock,
             new Path(kind.url),
             eventTimeSource
           )
@@ -84,6 +86,7 @@ class SourceFactory(fileSystem: FileSystem, getSystemTime: () => Timestamp) {
           new FileSystemSource(
             f.getPath.getName,
             fileSystem,
+            systemClock,
             f.getPath,
             eventTimeSource
           )

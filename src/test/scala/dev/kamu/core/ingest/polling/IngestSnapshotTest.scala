@@ -31,7 +31,7 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
         .resolve("src")
         .resolve("balances.csv")
 
-      val dataset = yaml.load[Dataset](s"""
+      val dataset = yaml.load[DatasetSnapshot](s"""
         |id: dev.kamu.test
         |rootPollingSource:
         |  fetch:
@@ -99,7 +99,7 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
         .resolve("src")
         .resolve("balances.csv")
 
-      val dataset = yaml.load[Dataset](s"""
+      val dataset = yaml.load[DatasetSnapshot](s"""
         |id: dev.kamu.test
         |rootPollingSource:
         |  fetch:

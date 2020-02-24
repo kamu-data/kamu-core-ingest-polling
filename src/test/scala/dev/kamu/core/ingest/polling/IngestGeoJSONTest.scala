@@ -74,7 +74,7 @@ class IngestGeoJSONTest extends FunSuite with IngestSuite {
         |  ]
         |}""".stripMargin
 
-      val dataset = yaml.load[Dataset](s"""
+      val dataset = yaml.load[DatasetSnapshot](s"""
         |id: dev.kamu.test
         |rootPollingSource:
         |  fetch:

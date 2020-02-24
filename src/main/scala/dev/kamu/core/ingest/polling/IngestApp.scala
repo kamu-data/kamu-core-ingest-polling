@@ -8,14 +8,14 @@
 
 package dev.kamu.core.ingest.polling
 
-import java.sql.Timestamp
-
+import dev.kamu.core.utils.ManualClock
 import org.apache.log4j.LogManager
 import org.apache.spark.SparkConf
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.SparkSession
 import org.datasyslab.geospark.serde.GeoSparkKryoRegistrator
+import org.datasyslab.geosparksql.utils.GeoSparkSQLRegistrator
 
 object IngestApp {
   def main(args: Array[String]) {
@@ -24,7 +24,13 @@ object IngestApp {
     if (config.tasks.isEmpty) {
       logger.warn("No tasks specified")
     } else {
-      val ingest = new Ingest(config, hadoopConf, sparkSession, systemTime)
+      val ingest = new Ingest(
+        config,
+        hadoopConf,
+        new ManualClock(),
+        sparkSession
+      )
+
       ingest.pollAndIngest()
     }
   }
@@ -32,6 +38,7 @@ object IngestApp {
   private def sparkConf(): SparkConf = {
     new SparkConf()
       .setAppName("ingest.polling")
+      .set("spark.sql.session.timeZone", "UTC")
       .set("spark.serializer", classOf[KryoSerializer].getName)
       .set("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
   }
@@ -41,12 +48,11 @@ object IngestApp {
   }
 
   private def sparkSession(): SparkSession = {
-    SparkSession.builder
+    val session = SparkSession.builder
       .config(sparkConf)
       .getOrCreate()
-  }
 
-  private def systemTime(): Timestamp = {
-    new Timestamp(System.currentTimeMillis())
+    GeoSparkSQLRegistrator.registerAll(session)
+    session
   }
 }

@@ -11,14 +11,16 @@ package dev.kamu.core.ingest.polling.poll
 import java.io.InputStream
 import java.net.URI
 import java.text.SimpleDateFormat
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.time.{Instant, ZonedDateTime}
 
 import dev.kamu.core.ingest.polling.utils.ExecutionResult
+import dev.kamu.core.utils.Clock
 import scalaj.http.Http
 
 class HTTPSource(
   val sourceID: String,
+  systemClock: Clock,
   url: URI,
   eventTimeSource: EventTimeSource
 ) extends CacheableSource {
@@ -79,7 +81,7 @@ class HTTPSource(
                     .toInstant
               ),
             eTag = response.header("ETag"),
-            lastDownloaded = Instant.now(),
+            lastDownloaded = systemClock.instant(),
             eventTime = eventTimeSource.getEventTime(this)
           )
         )

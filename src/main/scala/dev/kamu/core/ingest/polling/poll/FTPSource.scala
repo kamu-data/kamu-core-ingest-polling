@@ -10,13 +10,14 @@ package dev.kamu.core.ingest.polling.poll
 
 import java.io.InputStream
 import java.net.URI
-import java.time.Instant
 
 import dev.kamu.core.ingest.polling.utils.ExecutionResult
+import dev.kamu.core.utils.Clock
 import org.apache.commons.net.ftp.{FTP, FTPClient}
 
 class FTPSource(
   val sourceID: String,
+  systemClock: Clock,
   url: URI,
   eventTimeSource: EventTimeSource
 ) extends CacheableSource {
@@ -52,7 +53,7 @@ class FTPSource(
     ExecutionResult(
       wasUpToDate = false,
       checkpoint = DownloadCheckpoint(
-        lastDownloaded = Instant.now(),
+        lastDownloaded = systemClock.instant(),
         eventTime = eventTimeSource.getEventTime(this)
       )
     )
