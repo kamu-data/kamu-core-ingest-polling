@@ -10,15 +10,11 @@ package dev.kamu.core.ingest.polling
 
 import java.io.InputStream
 
-import dev.kamu.core.manifests.{DatasetID, Manifest, Resource}
-import org.apache.hadoop.fs.Path
+import dev.kamu.core.manifests.{DatasetID, DatasetLayout, Manifest, Resource}
 
 case class IngestTask(
   datasetToIngest: DatasetID,
-  datasetPath: Path,
-  checkpointsPath: Path,
-  pollCachePath: Path,
-  dataPath: Path
+  datasetLayout: DatasetLayout
 ) extends Resource[IngestTask]
 
 case class AppConf(

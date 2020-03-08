@@ -48,10 +48,8 @@ import org.apache.spark.sql._
 import org.datasyslab.geospark.formatMapper.GeoJsonReader
 import org.datasyslab.geospark.formatMapper.shapefileParser.ShapefileReader
 import org.datasyslab.geosparksql.UDF.UdfRegistrator
-import org.datasyslab.geosparksql.utils.{Adapter, GeoSparkSQLRegistrator}
+import org.datasyslab.geosparksql.utils.Adapter
 import spire.math.Interval
-
-import scala.sys.process.Process
 
 class Ingest(
   config: AppConf,
@@ -85,7 +83,8 @@ class Ingest(
     systemClock.advance()
 
     for (task <- config.tasks) {
-      val metaChain = new MetadataChainFS(fileSystem, task.datasetPath)
+      val metaChain =
+        new MetadataChainFS(fileSystem, task.datasetLayout.metadataDir)
       val blocks = metaChain.getBlocks()
 
       val summary = metaChain.getSummary()
@@ -99,22 +98,22 @@ class Ingest(
             + s" (${systemClock.instant()})"
         )
 
-        val downloadCheckpointPath = task.checkpointsPath
+        val downloadCheckpointPath = task.datasetLayout.checkpointsDir
           .resolve(externalSource.sourceID)
           .resolve(AppConf.downloadCheckpointFileName)
-        val downloadDataPath = task.pollCachePath
+        val downloadDataPath = task.datasetLayout.cacheDir
           .resolve(externalSource.sourceID)
           .resolve(AppConf.downloadDataFileName)
-        val prepCheckpointPath = task.checkpointsPath
+        val prepCheckpointPath = task.datasetLayout.checkpointsDir
           .resolve(externalSource.sourceID)
           .resolve(AppConf.prepCheckpointFileName)
-        val prepDataPath = task.pollCachePath
+        val prepDataPath = task.datasetLayout.cacheDir
           .resolve(externalSource.sourceID)
           .resolve(AppConf.prepDataFileName)
-        val ingestCheckpointPath = task.checkpointsPath
+        val ingestCheckpointPath = task.datasetLayout.checkpointsDir
           .resolve(externalSource.sourceID)
           .resolve(AppConf.ingestCheckpointFileName)
-        val ingestDataPath = task.dataPath
+        val ingestDataPath = task.datasetLayout.dataDir
 
         Seq(
           downloadCheckpointPath,

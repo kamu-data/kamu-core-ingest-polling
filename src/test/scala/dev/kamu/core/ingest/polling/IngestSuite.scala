@@ -21,6 +21,7 @@ import dev.kamu.core.utils.test.KamuDataFrameSuite
 import org.apache.hadoop
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
+import org.apache.spark.sql.DataFrame
 import org.scalatest.Suite
 
 trait IngestSuite extends KamuDataFrameSuite { self: Suite =>
@@ -50,7 +51,7 @@ trait IngestSuite extends KamuDataFrameSuite { self: Suite =>
     tempDir: Path,
     dataset: DatasetSnapshot,
     systemTime: Timestamp
-  ) = {
+  ): DataFrame = {
     val systemClock = new ManualClock(
       Some(java.time.Clock.fixed(systemTime.toInstant, ZoneOffset.UTC))
     )
@@ -64,11 +65,13 @@ trait IngestSuite extends KamuDataFrameSuite { self: Suite =>
     val conf = AppConf(
       tasks = Vector(
         IngestTask(
-          checkpointsPath = tempDir.resolve("checkpoints"),
-          pollCachePath = tempDir.resolve("checkpoints"),
-          dataPath = outputDir,
           datasetToIngest = dataset.id,
-          datasetPath = metaDir
+          datasetLayout = DatasetLayout(
+            metadataDir = metaDir,
+            checkpointsDir = tempDir.resolve("checkpoints"),
+            cacheDir = tempDir.resolve("checkpoints"),
+            dataDir = outputDir
+          )
         )
       )
     )
