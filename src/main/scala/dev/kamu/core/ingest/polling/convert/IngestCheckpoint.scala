@@ -15,5 +15,6 @@ import dev.kamu.core.manifests.Resource
 case class IngestCheckpoint(
   prepTimestamp: Instant,
   lastIngested: Instant,
-  outputDataHash: String
+  outputDataHash: String,
+  outputNumRecords: Long
 ) extends Resource[IngestCheckpoint]

@@ -159,7 +159,8 @@ class Ingest(
         // TODO: Atomicity?
         maybeCommitMetadata(
           metaChain,
-          ingestResult
+          ingestResult,
+          ingestDataPath
         )
 
         if (ingestResult.wasUpToDate) {
@@ -283,7 +284,7 @@ class Ingest(
             checkpoint = storedCheckpoint.get
           )
         } else {
-          val dataHash = ingest(
+          val (dataHash, numRecords) = ingest(
             getSparkSubSession(sparkSession),
             source,
             prepCheckpoint.eventTime,
@@ -297,7 +298,8 @@ class Ingest(
             checkpoint = IngestCheckpoint(
               prepTimestamp = prepCheckpoint.lastPrepared,
               lastIngested = systemClock.instant(),
-              outputDataHash = dataHash
+              outputDataHash = dataHash,
+              outputNumRecords = numRecords
             )
           )
         }
@@ -307,7 +309,8 @@ class Ingest(
 
   def maybeCommitMetadata(
     metaChain: MetadataChainFS,
-    ingestResult: ExecutionResult[IngestCheckpoint]
+    ingestResult: ExecutionResult[IngestCheckpoint],
+    dataDir: Path
   ): Unit = {
     // TODO: Should we commit anyway to advance dataset clock?
     if (ingestResult.wasUpToDate)
@@ -318,9 +321,26 @@ class Ingest(
       MetadataBlock(
         prevBlockHash = metaChain.getBlocks().last.blockHash,
         systemTime = systemClock.instant(),
-        outputDataInterval = Interval.point(systemClock.instant()),
-        outputDataHash = ingestResult.checkpoint.outputDataHash
+        outputSlice = Some(
+          DataSlice(
+            hash = ingestResult.checkpoint.outputDataHash,
+            interval = Interval.point(systemClock.instant()),
+            numRecords = ingestResult.checkpoint.outputNumRecords
+          )
+        )
       )
+    )
+
+    // TODO: Atomicity?
+    metaChain.updateSummary(
+      s =>
+        s.copy(
+          lastModified = systemClock.instant(),
+          numRecords = s.numRecords + block.outputSlice.get.numRecords,
+          dataSize = fileSystem
+            .getContentSummary(dataDir)
+            .getSpaceConsumed
+        )
     )
 
     logger.info(s"Committing new metadata block: ${block.blockHash}")
@@ -333,7 +353,7 @@ class Ingest(
     filePath: Path,
     outPath: Path,
     vocab: DatasetVocabulary
-  ): String = {
+  ): (String, Long) = {
     logger.info(
       s"Ingesting the data: in=$filePath, out=$outPath, format=${source.read}"
     )
@@ -358,12 +378,13 @@ class Ingest(
       .maybeTransform(source.coalesce != 0, _.coalesce(source.coalesce))
 
     val hash = computeHash(result)
+    val numRecords = result.count()
 
     result.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
 
-    hash
+    (hash, numRecords)
   }
 
   def readGeneric(
