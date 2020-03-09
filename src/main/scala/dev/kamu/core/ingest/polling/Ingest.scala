@@ -335,7 +335,7 @@ class Ingest(
     metaChain.updateSummary(
       s =>
         s.copy(
-          lastModified = systemClock.instant(),
+          lastPulled = Some(systemClock.instant()),
           numRecords = s.numRecords + block.outputSlice.get.numRecords,
           dataSize = fileSystem
             .getContentSummary(dataDir)
