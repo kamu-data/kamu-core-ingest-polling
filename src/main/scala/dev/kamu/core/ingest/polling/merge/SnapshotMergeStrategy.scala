@@ -85,7 +85,7 @@ class SnapshotMergeStrategy(
       }
 
     val prevProj = TimeSeriesUtils
-      .asOf(prev, primaryKey)
+      .asOf(prev, primaryKey, vocab.eventTimeColumn, None, vocab)
 
     // We consider data changed when
     // either both columns exist and have different values

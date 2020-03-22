@@ -23,23 +23,16 @@ object TimeSeriesUtils {
     spark.createDataFrame(spark.sparkContext.emptyRDD[Row], proto.schema)
   }
 
-  /** Projects time series data onto specific point in system time.
+  /** Projects snapshot history data onto specific point in time.
     *
-    * Time series data is expected to have following columns:
-    *   - observation
-    *   - system_time
-    *   - specified primary key
-    *
-    * The system time column is replaced with last updated time column.
-    *
-    * TODO: Test performance of ORDER BY + LAST() vs ORDER BY DESC + FIRST()
+    * TODO: Test performance of JOIN vs Window function ranking
     **/
   def asOf(
     series: DataFrame,
     primaryKey: Seq[String],
-    systemTime: Option[Timestamp] = None,
-    lastUpdatedSystemTimeColumn: Option[String] = None,
-    vocab: DatasetVocabulary = DatasetVocabulary()
+    timeCol: String,
+    asOfTime: Option[Timestamp],
+    vocab: DatasetVocabulary
   ): DataFrame = {
     val pk = primaryKey.toVector
 
@@ -52,24 +45,19 @@ object TimeSeriesUtils {
     val aggregates = dataColumns
       .map(c => last(c).as(aggAlias(c)))
 
-    val resultDataColumns_t = dataColumns
-      .filter(_ != vocab.observationColumn)
-      .filter(_ != vocab.systemTimeColumn)
-      .map(c => col(aggAlias(c)).as(c))
-
-    val resultDataColumns =
-      if (lastUpdatedSystemTimeColumn.isDefined)
-        resultDataColumns_t :+ col(aggAlias(vocab.systemTimeColumn))
-          .as(lastUpdatedSystemTimeColumn.get)
-      else resultDataColumns_t
-
-    val resultColumns = pk.map(col) ++ resultDataColumns
+    val resultColumns = series.columns.map(
+      c =>
+        if (dataColumns.contains(c))
+          col(aggAlias(c)).as(c)
+        else
+          col(c)
+    )
 
     series
-      .when(_ => systemTime.isDefined)(
-        _.filter(col(vocab.systemTimeColumn) <= systemTime.get)
+      .when(_ => asOfTime.isDefined)(
+        _.filter(col(timeCol) <= asOfTime.get)
       )
-      .orderBy(vocab.systemTimeColumn)
+      .orderBy(col(timeCol))
       .groupBy(pk.map(col): _*)
       .aggv(aggregates: _*)
       .filter(col(aggAlias(vocab.observationColumn)) =!= lit(vocab.obsvRemoved))

@@ -10,6 +10,7 @@ package dev.kamu.core.ingest.polling
 
 import dev.kamu.core.utils.test.KamuDataFrameSuite
 import dev.kamu.core.ingest.polling.utils.TimeSeriesUtils
+import dev.kamu.core.manifests.DatasetVocabulary
 import org.scalatest.FunSuite
 
 class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
@@ -18,17 +19,17 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
   def testSeries =
     sc.parallelize(
         Seq(
-          (ts(0), "I", 1, "A", "x"),
-          (ts(0), "I", 2, "B", "y"),
-          (ts(0), "I", 3, "C", "z"),
-          (ts(1), "U", 1, "A", "a"),
-          (ts(1), "U", 2, "B", "b"),
-          (ts(2), "D", 1, "A", "a"),
-          (ts(2), "U", 2, "B", "bb"),
-          (ts(3), "I", 4, "D", "d")
+          (ts(0), ts(0), "I", 1, "A", "x"),
+          (ts(0), ts(0), "I", 2, "B", "y"),
+          (ts(0), ts(0), "I", 3, "C", "z"),
+          (ts(0), ts(1), "U", 1, "A", "a"),
+          (ts(0), ts(1), "U", 2, "B", "b"),
+          (ts(0), ts(2), "D", 1, "A", "a"),
+          (ts(0), ts(2), "U", 2, "B", "bb"),
+          (ts(0), ts(3), "I", 4, "D", "d")
         )
       )
-      .toDF("system_time", "observed", "id", "name", "data")
+      .toDF("system_time", "event_time", "observed", "id", "name", "data")
 
   test("asOf latest") {
     val series = testSeries
@@ -37,19 +38,21 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
       .asOf(
         series,
         Seq("id"),
-        lastUpdatedSystemTimeColumn = Some("last_updated_sys")
+        "event_time",
+        None,
+        DatasetVocabulary()
       )
       .orderBy("id")
 
     val expected = sc
       .parallelize(
         Seq(
-          (2, "B", "bb", ts(2)),
-          (3, "C", "z", ts(0)),
-          (4, "D", "d", ts(3))
+          (ts(0), ts(2), "U", 2, "B", "bb"),
+          (ts(0), ts(0), "I", 3, "C", "z"),
+          (ts(0), ts(3), "I", 4, "D", "d")
         )
       )
-      .toDF("id", "name", "data", "last_updated_sys")
+      .toDF("system_time", "event_time", "observed", "id", "name", "data")
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -61,20 +64,28 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
       .asOf(
         series,
         Seq("id"),
+        "event_time",
         Some(ts(1)),
-        lastUpdatedSystemTimeColumn = Some("last_updated_sys")
+        DatasetVocabulary()
       )
       .orderBy("id")
 
     val expected = sc
       .parallelize(
         Seq(
-          (1, "A", "a", ts(1)),
-          (2, "B", "b", ts(1)),
-          (3, "C", "z", ts(0))
+          (ts(0), ts(1), "U", 1, "A", "a"),
+          (ts(0), ts(1), "U", 2, "B", "b"),
+          (ts(0), ts(0), "I", 3, "C", "z")
         )
       )
-      .toDF("id", "name", "data", "last_updated_sys")
+      .toDF(
+        "system_time",
+        "event_time",
+        "observed",
+        "id",
+        "name",
+        "data"
+      )
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
@@ -83,35 +94,51 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
     val series = sc
       .parallelize(
         Seq(
-          (ts(0), "I", 1, "A", "x"),
-          (ts(0), "I", 1, "B", "y"),
-          (ts(0), "I", 2, "C", "z"),
-          (ts(1), "U", 1, "A", "a"),
-          (ts(1), "U", 1, "B", "b"),
-          (ts(2), "D", 1, "A", "a"),
-          (ts(2), "U", 1, "B", "bb"),
-          (ts(3), "I", 2, "D", "d")
+          (ts(0), ts(0), "I", 1, "A", "x"),
+          (ts(0), ts(0), "I", 1, "B", "y"),
+          (ts(0), ts(0), "I", 2, "C", "z"),
+          (ts(0), ts(1), "U", 1, "A", "a"),
+          (ts(0), ts(1), "U", 1, "B", "b"),
+          (ts(0), ts(2), "D", 1, "A", "a"),
+          (ts(0), ts(2), "U", 1, "B", "bb"),
+          (ts(0), ts(3), "I", 2, "D", "d")
         )
       )
-      .toDF("system_time", "observed", "key", "name", "data")
+      .toDF(
+        "system_time",
+        "event_time",
+        "observed",
+        "key",
+        "name",
+        "data"
+      )
 
     val actual = TimeSeriesUtils
       .asOf(
         series,
         Seq("key", "name"),
-        lastUpdatedSystemTimeColumn = Some("last_updated_sys")
+        "event_time",
+        None,
+        DatasetVocabulary()
       )
       .orderBy("key", "name")
 
     val expected = sc
       .parallelize(
         Seq(
-          (1, "B", "bb", ts(2)),
-          (2, "C", "z", ts(0)),
-          (2, "D", "d", ts(3))
+          (ts(0), ts(2), "U", 1, "B", "bb"),
+          (ts(0), ts(0), "I", 2, "C", "z"),
+          (ts(0), ts(3), "I", 2, "D", "d")
         )
       )
-      .toDF("key", "name", "data", "last_updated_sys")
+      .toDF(
+        "system_time",
+        "event_time",
+        "observed",
+        "key",
+        "name",
+        "data"
+      )
 
     assertDataFrameEquals(expected, actual, ignoreNullable = true)
   }
