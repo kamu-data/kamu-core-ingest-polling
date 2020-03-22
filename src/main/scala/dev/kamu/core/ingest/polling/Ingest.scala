@@ -377,12 +377,16 @@ class Ingest(
       .transform(mergeWithExisting(source, eventTime, outPath, vocab))
       .maybeTransform(source.coalesce != 0, _.coalesce(source.coalesce))
 
+    result.cache()
+
     val hash = computeHash(result)
     val numRecords = result.count()
 
     result.write
       .mode(SaveMode.Append)
       .parquet(outPath.toString)
+
+    result.unpersist()
 
     (hash, numRecords)
   }
