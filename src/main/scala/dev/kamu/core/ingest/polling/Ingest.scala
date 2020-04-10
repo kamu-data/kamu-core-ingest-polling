@@ -508,21 +508,23 @@ class Ingest(
     if (source.preprocess.isEmpty)
       return df
 
-    val spark = df.sparkSession
+    if (source.preprocessEngine.get != "sparkSQL")
+      throw new RuntimeException(
+        s"Unsupported engine: ${source.preprocessEngine.get}"
+      )
 
+    val transform =
+      yaml.load[TransformKind.SparkSQL](source.preprocess.get.toConfig)
+
+    val spark = df.sparkSession
     df.createTempView("input")
 
-    for (step <- source.preprocess) {
-      step match {
-        case s: ProcessingStepKind.SparkSQL =>
-          val tempResult = spark.sql(s.query)
-          if (s.alias.isEmpty || s.alias.get == "output")
-            return tempResult
-          else
-            tempResult.createTempView(s"`${s.alias.get}`")
-        case _ =>
-          throw new RuntimeException(s"Unsupported processing step kind: $step")
-      }
+    for (step <- transform.queries) {
+      val tempResult = spark.sql(step.query)
+      if (step.alias.isEmpty || step.alias.get == "output")
+        return tempResult
+      else
+        tempResult.createTempView(s"`${step.alias.get}`")
     }
 
     throw new RuntimeException(

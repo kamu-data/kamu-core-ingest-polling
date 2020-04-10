@@ -17,4 +17,4 @@ case class IngestCheckpoint(
   lastIngested: Instant,
   outputDataHash: String,
   outputNumRecords: Long
-) extends Resource[IngestCheckpoint]
+) extends Resource

@@ -62,7 +62,7 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
           |    - name STRING
           |    - balance INT
           |  preprocess:
-          |  - kind: sparkSQL
+          |    engine: sparkSQL
           |    query: SELECT id, name, balance FROM input
           |  merge:
           |    kind: snapshot

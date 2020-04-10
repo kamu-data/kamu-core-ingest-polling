@@ -17,6 +17,6 @@ case class DownloadCheckpoint(
   lastDownloaded: Instant,
   lastModified: Option[Instant] = None,
   eTag: Option[String] = None
-) extends Resource[DownloadCheckpoint] {
+) extends Resource {
   def isCacheable: Boolean = lastModified.isDefined || eTag.isDefined
 }

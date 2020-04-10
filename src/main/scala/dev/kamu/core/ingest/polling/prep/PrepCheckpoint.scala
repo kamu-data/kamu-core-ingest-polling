@@ -16,4 +16,4 @@ case class PrepCheckpoint(
   downloadTimestamp: Instant,
   eventTime: Option[Instant],
   lastPrepared: Instant
-) extends Resource[PrepCheckpoint]
+) extends Resource

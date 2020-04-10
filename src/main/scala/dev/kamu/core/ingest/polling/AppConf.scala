@@ -15,11 +15,11 @@ import dev.kamu.core.manifests.{DatasetID, DatasetLayout, Manifest, Resource}
 case class IngestTask(
   datasetToIngest: DatasetID,
   datasetLayout: DatasetLayout
-) extends Resource[IngestTask]
+) extends Resource
 
 case class AppConf(
   tasks: Vector[IngestTask]
-) extends Resource[AppConf]
+) extends Resource
 
 object AppConf {
   import dev.kamu.core.manifests.parsing.pureconfig.yaml

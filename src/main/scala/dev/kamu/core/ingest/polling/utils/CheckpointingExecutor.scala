@@ -19,7 +19,7 @@ case class ExecutionResult[TCheckpoint](
   checkpoint: TCheckpoint
 )
 
-class CheckpointingExecutor[TCheckpoint <: Resource[TCheckpoint]](
+class CheckpointingExecutor[TCheckpoint <: Resource](
   fileSystem: FileSystem
 )(
   implicit icr: Derivation[ConfigReader[TCheckpoint]],
@@ -72,7 +72,7 @@ class CheckpointingExecutor[TCheckpoint <: Resource[TCheckpoint]](
 
     val outputStream = fileSystem.create(checkpointPath)
 
-    yaml.save(checkpoint.asManifest, outputStream)
+    yaml.save(Manifest(checkpoint), outputStream)
     outputStream.close()
   }
 }
