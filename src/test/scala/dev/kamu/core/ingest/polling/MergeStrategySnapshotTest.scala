@@ -12,6 +12,7 @@ import java.sql.Timestamp
 
 import dev.kamu.core.utils.test.KamuDataFrameSuite
 import dev.kamu.core.ingest.polling.merge.SnapshotMergeStrategy
+import dev.kamu.core.utils.ManualClock
 import org.scalatest.FunSuite
 
 case class Employee(
@@ -51,6 +52,12 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
 
   protected override val enableHiveSupport = false
 
+  def clockAt(timestamp: Timestamp) = {
+    val systemClock = new ManualClock()
+    systemClock.set(timestamp)
+    systemClock
+  }
+
   test("From empty") {
     val curr = sc
       .parallelize(
@@ -62,13 +69,14 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"))
-
     val t_e = new Timestamp(0)
     val t_s = new Timestamp(1)
 
-    val actual = strategy
-      .merge(None, curr, t_s, Some(t_e))
+    val actual = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s),
+      eventTime = t_e
+    ).merge(None, curr)
       .as[EmployeeEvent]
       .orderBy("system_time", "event_time", "id")
 
@@ -97,18 +105,23 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"))
-
     val t_e1 = new Timestamp(0)
     val t_s1 = new Timestamp(1)
 
-    val prev = strategy.merge(None, curr, t_s1, Some(t_e1))
+    val prev = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s1),
+      eventTime = t_e1
+    ).merge(None, curr)
 
     val t_e2 = new Timestamp(2)
     val t_s2 = new Timestamp(3)
 
-    val actual = strategy
-      .merge(Some(prev), curr, t_s2, Some(t_e2))
+    val actual = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s2),
+      eventTime = t_e2
+    ).merge(Some(prev), curr)
       .as[EmployeeEvent]
 
     assert(actual.isEmpty)
@@ -135,18 +148,23 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"))
-
     val t_e1 = new Timestamp(0)
     val t_s1 = new Timestamp(1)
 
-    val prev = strategy.merge(None, data1, t_s1, Some(t_e1))
+    val prev = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s1),
+      eventTime = t_e1
+    ).merge(None, data1)
 
     val t_e2 = new Timestamp(2)
     val t_s2 = new Timestamp(3)
 
-    val actual = strategy
-      .merge(Some(prev), data2, t_s2, Some(t_e2))
+    val actual = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s2),
+      eventTime = t_e2
+    ).merge(Some(prev), data2)
       .as[EmployeeEvent]
       .orderBy("system_time", "event_time", "id")
 
@@ -187,18 +205,23 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"))
-
     val t_e1 = new Timestamp(0)
     val t_s1 = new Timestamp(1)
 
-    val prev = strategy.merge(None, data1, t_s1, Some(t_e1))
+    val prev = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s1),
+      eventTime = t_e1
+    ).merge(None, data1)
 
     val t_e2 = new Timestamp(2)
     val t_s2 = new Timestamp(3)
 
-    val actual = strategy
-      .merge(Some(prev), data2, t_s2, Some(t_e2))
+    val actual = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s2),
+      eventTime = t_e2
+    ).merge(Some(prev), data2)
       .as[EmployeeEvent]
       .orderBy("system_time", "event_time", "id")
 
@@ -239,17 +262,20 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"))
-
-    val prev =
-      strategy.merge(None, data1, new Timestamp(1), Some(new Timestamp(1)))
+    val prev = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(ts(2)),
+      eventTime = ts(1)
+    ).merge(None, data1)
 
     assertThrows[Exception] {
-      strategy.merge(
+      new SnapshotMergeStrategy(
+        primaryKey = Vector("id"),
+        systemClock = clockAt(ts(3)),
+        eventTime = ts(0)
+      ).merge(
         Some(prev),
-        data2,
-        new Timestamp(2),
-        Some(new Timestamp(0))
+        data2
       )
     }
   }
@@ -275,18 +301,23 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"))
-
     val t_e1 = new Timestamp(0)
     val t_s1 = new Timestamp(1)
 
-    val prev = strategy.merge(None, data1, t_s1, Some(t_e1))
+    val prev = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s1),
+      eventTime = t_e1
+    ).merge(None, data1)
 
     val t_e2 = new Timestamp(2)
     val t_s2 = new Timestamp(3)
 
-    val actual = strategy
-      .merge(Some(prev), data2, t_s2, Some(t_e2))
+    val actual = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s2),
+      eventTime = t_e2
+    ).merge(Some(prev), data2)
       .as[EmployeeEventV2]
       .orderBy("system_time", "event_time", "id")
 
@@ -326,18 +357,23 @@ class MergeStrategySnapshotTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF()
 
-    val strategy = new SnapshotMergeStrategy(Vector("id"))
-
     val t_e1 = new Timestamp(0)
     val t_s1 = new Timestamp(1)
 
-    val prev = strategy.merge(None, data1, t_s1, Some(t_e1))
+    val prev = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s1),
+      eventTime = t_e1
+    ).merge(None, data1)
 
     val t_e2 = new Timestamp(2)
     val t_s2 = new Timestamp(3)
 
-    val actual = strategy
-      .merge(Some(prev), data2, t_s2, Some(t_e2))
+    val actual = new SnapshotMergeStrategy(
+      primaryKey = Vector("id"),
+      systemClock = clockAt(t_s2),
+      eventTime = t_e2
+    ).merge(Some(prev), data2)
       .as[EmployeeEventV2]
       .orderBy("system_time", "event_time", "id")
 

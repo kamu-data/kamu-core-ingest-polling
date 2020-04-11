@@ -8,14 +8,23 @@
 
 package dev.kamu.core.ingest.polling
 
+import java.sql.Timestamp
+
 import dev.kamu.core.utils.test.KamuDataFrameSuite
 import dev.kamu.core.ingest.polling.merge.LedgerMergeStrategy
+import dev.kamu.core.utils.ManualClock
 import org.scalatest.FunSuite
 
 class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
   import spark.implicits._
 
   protected override val enableHiveSupport = false
+
+  def clockAt(timestamp: Timestamp) = {
+    val systemClock = new ManualClock()
+    systemClock.set(timestamp)
+    systemClock
+  }
 
   test("From empty") {
     val curr = sc
@@ -28,10 +37,10 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF("event_time", "id", "data")
 
-    val strategy = new LedgerMergeStrategy(Vector("id"))
+    val strategy = new LedgerMergeStrategy(Vector("id"), clockAt(ts(3)))
 
     val actual = strategy
-      .merge(None, curr, ts(3), None)
+      .merge(None, curr)
       .orderBy("system_time", "event_time", "id")
 
     val expected = sc
@@ -71,10 +80,10 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF("event_time", "id", "data")
 
-    val strategy = new LedgerMergeStrategy(Vector("id"))
+    val strategy = new LedgerMergeStrategy(Vector("id"), clockAt(ts(6)))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(6), None)
+      .merge(Some(prev), curr)
       .orderBy("system_time", "event_time", "id")
 
     val expected = sc
@@ -114,10 +123,10 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF("event_time", "id", "extra", "data")
 
-    val strategy = new LedgerMergeStrategy(Vector("id"))
+    val strategy = new LedgerMergeStrategy(Vector("id"), clockAt(ts(6)))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(6), None)
+      .merge(Some(prev), curr)
       .orderBy("system_time", "event_time", "id")
 
     val expected = sc
@@ -158,10 +167,10 @@ class MergeStrategyLedgerTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF("event_time", "id", "data")
 
-    val strategy = new LedgerMergeStrategy(Vector("id"))
+    val strategy = new LedgerMergeStrategy(Vector("id"), clockAt(ts(6)))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(6), None)
+      .merge(Some(prev), curr)
       .orderBy("system_time", "event_time", "id")
 
     val expected = sc

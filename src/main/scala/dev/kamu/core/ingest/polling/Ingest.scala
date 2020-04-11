@@ -545,7 +545,12 @@ class Ingest(
     curr: DataFrame
   ): DataFrame = {
     val spark = curr.sparkSession
-    val mergeStrategy = MergeStrategy(source.merge, vocab)
+    val mergeStrategy = MergeStrategy(
+      kind = source.merge,
+      systemClock = systemClock,
+      eventTime = eventTime.map(Timestamp.from),
+      vocab = vocab
+    )
 
     val prev =
       if (fileSystem.exists(outPath))
@@ -553,12 +558,8 @@ class Ingest(
       else
         None
 
-    mergeStrategy.merge(
-      prev,
-      curr,
-      systemClock.timestamp(),
-      eventTime.map(Timestamp.from)
-    )
+    // TODO: Cache prev and curr?
+    mergeStrategy.merge(prev, curr)
   }
 
   def getSparkSubSession(sparkSession: SparkSession): SparkSession = {

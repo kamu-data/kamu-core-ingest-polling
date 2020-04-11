@@ -8,7 +8,7 @@
 
 package dev.kamu.core.ingest.polling.poll
 
-import dev.kamu.core.manifests.{CachingKind, EventTimeKind, FetchKind}
+import dev.kamu.core.manifests.{CachingKind, EventTimeKind, FetchSourceKind}
 import dev.kamu.core.utils.Clock
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
@@ -16,7 +16,7 @@ import org.apache.log4j.LogManager
 class SourceFactory(fileSystem: FileSystem, systemClock: Clock) {
   private val logger = LogManager.getLogger(getClass.getName)
 
-  def getSource(kind: FetchKind): Seq[CacheableSource] = {
+  def getSource(kind: FetchSourceKind): Seq[CacheableSource] = {
     val eventTimeSource = kind.eventTime match {
       case None | Some(_: EventTimeKind.FromSystemTime) =>
         new EventTimeSource.FromSystemTime(systemClock)
@@ -29,15 +29,15 @@ class SourceFactory(fileSystem: FileSystem, systemClock: Clock) {
     }
 
     kind match {
-      case fetch: FetchKind.FetchUrl =>
+      case fetch: FetchSourceKind.Url =>
         getFetchUrlSource(fetch, eventTimeSource)
-      case glob: FetchKind.FetchFilesGlob =>
+      case glob: FetchSourceKind.FilesGlob =>
         getFetchFilesGlobSource(glob, eventTimeSource)
     }
   }
 
   def getFetchUrlSource(
-    kind: FetchKind.FetchUrl,
+    kind: FetchSourceKind.Url,
     eventTimeSource: EventTimeSource
   ): Seq[CacheableSource] = {
     kind.url.getScheme match {
@@ -76,7 +76,7 @@ class SourceFactory(fileSystem: FileSystem, systemClock: Clock) {
   }
 
   def getFetchFilesGlobSource(
-    kind: FetchKind.FetchFilesGlob,
+    kind: FetchSourceKind.FilesGlob,
     eventTimeSource: EventTimeSource
   ): Seq[CacheableSource] = {
     val globbed = fileSystem
@@ -100,10 +100,10 @@ class SourceFactory(fileSystem: FileSystem, systemClock: Clock) {
     globbed
   }
 
-  def getCachingBehavior(kind: FetchKind): CachingBehavior = {
+  def getCachingBehavior(kind: FetchSourceKind): CachingBehavior = {
     val cacheSettings = kind match {
-      case url: FetchKind.FetchUrl        => url.cache
-      case glob: FetchKind.FetchFilesGlob => glob.cache
+      case url: FetchSourceKind.Url        => url.cache
+      case glob: FetchSourceKind.FilesGlob => glob.cache
     }
     cacheSettings match {
       case None                         => new CachingBehaviorDefault()

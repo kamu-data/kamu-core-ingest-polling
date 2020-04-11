@@ -8,14 +8,23 @@
 
 package dev.kamu.core.ingest.polling
 
+import java.sql.Timestamp
+
 import dev.kamu.core.utils.test.KamuDataFrameSuite
 import dev.kamu.core.ingest.polling.merge.AppendMergeStrategy
+import dev.kamu.core.utils.ManualClock
 import org.scalatest.FunSuite
 
 class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
   import spark.implicits._
 
   protected override val enableHiveSupport = false
+
+  def clockAt(timestamp: Timestamp) = {
+    val systemClock = new ManualClock()
+    systemClock.set(timestamp)
+    systemClock
+  }
 
   test("From empty") {
     val curr = sc
@@ -28,10 +37,10 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
       )
       .toDF("event_time", "id", "data")
 
-    val strategy = new AppendMergeStrategy()
+    val strategy = new AppendMergeStrategy(clockAt(ts(1)))
 
     val actual = strategy
-      .merge(None, curr, ts(1), None)
+      .merge(None, curr)
       .orderBy("system_time", "event_time", "id")
 
     val expected = sc
@@ -61,25 +70,25 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
     val curr = sc
       .parallelize(
         Seq(
-          (4, "d"),
-          (5, "e"),
-          (6, "f")
+          (ts(1), 4, "d"),
+          (ts(1), 5, "e"),
+          (ts(1), 6, "f")
         )
       )
-      .toDF("id", "data")
+      .toDF("event_time", "id", "data")
 
-    val strategy = new AppendMergeStrategy()
+    val strategy = new AppendMergeStrategy(clockAt(ts(2)))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(3), Some(ts(2)))
+      .merge(Some(prev), curr)
       .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
         Seq(
-          (ts(3), ts(2), 4, "d"),
-          (ts(3), ts(2), 5, "e"),
-          (ts(3), ts(2), 6, "f")
+          (ts(2), ts(1), 4, "d"),
+          (ts(2), ts(1), 5, "e"),
+          (ts(2), ts(1), 6, "f")
         )
       )
       .toDF("system_time", "event_time", "id", "data")
@@ -101,25 +110,25 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
     val curr = sc
       .parallelize(
         Seq(
-          (4, "x", "d"),
-          (5, "y", "e"),
-          (6, "z", "f")
+          (ts(1), 4, "x", "d"),
+          (ts(1), 5, "y", "e"),
+          (ts(1), 6, "z", "f")
         )
       )
-      .toDF("id", "extra", "data")
+      .toDF("event_time", "id", "extra", "data")
 
-    val strategy = new AppendMergeStrategy()
+    val strategy = new AppendMergeStrategy(clockAt(ts(2)))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(3), Some(ts(2)))
+      .merge(Some(prev), curr)
       .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
         Seq(
-          (ts(3), ts(2), 4, "d", "x"),
-          (ts(3), ts(2), 5, "e", "y"),
-          (ts(3), ts(2), 6, "f", "z")
+          (ts(2), ts(1), 4, "d", "x"),
+          (ts(2), ts(1), 5, "e", "y"),
+          (ts(2), ts(1), 6, "f", "z")
         )
       )
       .toDF("system_time", "event_time", "id", "data", "extra")
@@ -142,25 +151,25 @@ class MergeStrategyAppendTest extends FunSuite with KamuDataFrameSuite {
     val curr = sc
       .parallelize(
         Seq(
-          (4, "d"),
-          (5, "e"),
-          (6, "f")
+          (ts(1), 4, "d"),
+          (ts(1), 5, "e"),
+          (ts(1), 6, "f")
         )
       )
-      .toDF("id", "data")
+      .toDF("event_time", "id", "data")
 
-    val strategy = new AppendMergeStrategy()
+    val strategy = new AppendMergeStrategy(clockAt(ts(2)))
 
     val actual = strategy
-      .merge(Some(prev), curr, ts(3), Some(ts(2)))
+      .merge(Some(prev), curr)
       .orderBy("system_time", "event_time", "id")
 
     val expected = sc
       .parallelize(
         Seq(
-          (ts(3), ts(2), 4, null, "d"),
-          (ts(3), ts(2), 5, null, "e"),
-          (ts(3), ts(2), 6, null, "f")
+          (ts(2), ts(1), 4, null, "d"),
+          (ts(2), ts(1), 5, null, "e"),
+          (ts(2), ts(1), 6, null, "f")
         )
       )
       .toDF("system_time", "event_time", "id", "extra", "data")

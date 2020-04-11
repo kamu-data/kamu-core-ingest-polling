@@ -38,9 +38,10 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
       .asOf(
         series,
         Seq("id"),
-        "event_time",
         None,
-        DatasetVocabulary()
+        "event_time",
+        "observed",
+        "D"
       )
       .orderBy("id")
 
@@ -64,9 +65,10 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
       .asOf(
         series,
         Seq("id"),
-        "event_time",
         Some(ts(1)),
-        DatasetVocabulary()
+        "event_time",
+        "observed",
+        "D"
       )
       .orderBy("id")
 
@@ -117,9 +119,10 @@ class TimeSeriesUtilsTest extends FunSuite with KamuDataFrameSuite {
       .asOf(
         series,
         Seq("key", "name"),
-        "event_time",
         None,
-        DatasetVocabulary()
+        "event_time",
+        "observed",
+        "D"
       )
       .orderBy("key", "name")
 

@@ -8,13 +8,9 @@
 
 package dev.kamu.core.ingest.polling.merge
 
-import java.sql.Timestamp
-
-import dev.kamu.core.ingest.polling.utils.DFUtils._
-import dev.kamu.core.ingest.polling.utils.TimeSeriesUtils
 import dev.kamu.core.manifests.DatasetVocabulary
+import dev.kamu.core.utils.Clock
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.lit
 
 /** Ledger merge strategy.
   *
@@ -35,19 +31,15 @@ import org.apache.spark.sql.functions.lit
   */
 class LedgerMergeStrategy(
   pk: Vector[String],
+  systemClock: Clock,
   vocab: DatasetVocabulary = DatasetVocabulary()
-) extends MergeStrategy(vocab) {
+) extends MergeStrategy(systemClock, vocab) {
 
   override def merge(
     prevRaw: Option[DataFrame],
-    currRaw: DataFrame,
-    systemTime: Timestamp,
-    eventTime: Option[Timestamp]
+    currRaw: DataFrame
   ): DataFrame = {
-    if (!currRaw.hasColumn(vocab.eventTimeColumn))
-      throw new Exception("Event time must be contained within ledger data")
-
-    val (prev, curr, _, _) = prepare(prevRaw, currRaw, systemTime, eventTime)
+    val (prev, curr, _, _) = prepare(prevRaw, currRaw)
 
     orderColumns(
       curr

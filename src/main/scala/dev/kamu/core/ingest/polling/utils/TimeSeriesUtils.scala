@@ -10,7 +10,6 @@ package dev.kamu.core.ingest.polling.utils
 
 import java.sql.Timestamp
 
-import dev.kamu.core.manifests.DatasetVocabulary
 import dev.kamu.core.ingest.polling.utils.DFUtils._
 import org.apache.spark.sql.functions.{col, last, lit}
 import org.apache.spark.sql.{DataFrame, Row}
@@ -30,9 +29,10 @@ object TimeSeriesUtils {
   def asOf(
     series: DataFrame,
     primaryKey: Seq[String],
-    timeCol: String,
     asOfTime: Option[Timestamp],
-    vocab: DatasetVocabulary
+    timeCol: String,
+    observationColumn: String,
+    obsvRemoved: String
   ): DataFrame = {
     val pk = primaryKey.toVector
 
@@ -60,7 +60,7 @@ object TimeSeriesUtils {
       .orderBy(col(timeCol))
       .groupBy(pk.map(col): _*)
       .aggv(aggregates: _*)
-      .filter(col(aggAlias(vocab.observationColumn)) =!= lit(vocab.obsvRemoved))
+      .filter(col(aggAlias(observationColumn)) =!= lit(obsvRemoved))
       .select(resultColumns: _*)
   }
 

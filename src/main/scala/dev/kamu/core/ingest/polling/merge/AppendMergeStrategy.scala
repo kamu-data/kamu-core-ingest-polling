@@ -11,27 +11,23 @@ package dev.kamu.core.ingest.polling.merge
 import java.sql.Timestamp
 
 import dev.kamu.core.manifests.DatasetVocabulary
+import dev.kamu.core.utils.Clock
 import org.apache.spark.sql.DataFrame
 
 /** Append merge strategy.
   *
-  * Under this strategy polled data will be appended in its original form
-  * to the already ingested data. Optionally can add the system time column.
-  *
-  * @param vocab vocabulary of system column names and common values
+  * See [[dev.kamu.core.manifests.MergeStrategyKind.Append]] for details.
   */
 class AppendMergeStrategy(
+  systemClock: Clock,
   vocab: DatasetVocabulary = DatasetVocabulary()
-) extends MergeStrategy(vocab) {
+) extends MergeStrategy(systemClock, vocab) {
 
   override def merge(
     prevRaw: Option[DataFrame],
-    currRaw: DataFrame,
-    systemTime: Timestamp,
-    eventTime: Option[Timestamp]
+    currRaw: DataFrame
   ): DataFrame = {
-    val (_, curr, _, _) = prepare(prevRaw, currRaw, systemTime, eventTime)
-
+    val (_, curr, _, _) = prepare(prevRaw, currRaw)
     orderColumns(curr)
   }
 

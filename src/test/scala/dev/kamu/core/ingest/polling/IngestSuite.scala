@@ -53,7 +53,7 @@ trait IngestSuite extends KamuDataFrameSuite { self: Suite =>
     systemTime: Timestamp
   ): DataFrame = {
     val systemClock = new ManualClock(
-      Some(java.time.Clock.fixed(systemTime.toInstant, ZoneOffset.UTC))
+      clock = Some(java.time.Clock.fixed(systemTime.toInstant, ZoneOffset.UTC))
     )
 
     val metaDir = tempDir.resolve("dataset")

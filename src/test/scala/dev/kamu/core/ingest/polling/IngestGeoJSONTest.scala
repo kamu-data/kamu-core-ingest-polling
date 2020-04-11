@@ -79,7 +79,7 @@ class IngestGeoJSONTest extends FunSuite with IngestSuite {
         |source:
         |  kind: root
         |  fetch:
-        |    kind: fetchUrl
+        |    kind: url
         |    url: $inputPath
         |    eventTime:
         |      kind: fromSystemTime

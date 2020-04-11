@@ -12,63 +12,38 @@ import java.sql.Timestamp
 import dev.kamu.core.ingest.polling.utils.DFUtils._
 import dev.kamu.core.ingest.polling.utils.TimeSeriesUtils
 import dev.kamu.core.manifests.DatasetVocabulary
+import dev.kamu.core.utils.Clock
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.{col, lit, when, min, max}
+import org.apache.spark.sql.functions.{col, lit, max, min, when}
 
 /** Snapshot data merge strategy.
   *
-  * This strategy should be used for data dumps that are taken periodically
-  * and only contain only the latest state of the observed entity or system.
-  * Over time such dumps can have new rows added, and old rows either missing
-  * or changed.
-  *
-  * This strategy transforms snapshot data into an append-only event stream
-  * where data already added is immutable. It does so by treating rows in
-  * snapshots as "observation" events and adding an "observed" column
-  * that will contain:
-  *   - "I" - when a row appears for the first time
-  *   - "D" - when row disappears
-  *   - "U" - whenever any row data has changed
-  *
-  * This strategy relies on a user-specified primary key column to
-  * correlate the rows between two snapshots.
-  *
-  * To determine if the row has changed between two snapshots all columns are
-  * compared one by one. Optionally the set of columns to compare can be
-  * specified explicitly. If the data contains a column that is guaranteed to
-  * change whenever any of the data columns changes (for example a modification
-  * timestamp, an incremental version, or a data hash) - using it as a
-  * modification indicator will significantly speed up the detection of
-  * modified rows.
-  *
-  * This strategy will always preserve all columns from existing and
-  * new snapshots, so the set of columns can only grow.
-  *
-  * @param primaryKey     primary key column names
-  * @param compareColumns columns to compare to determine if a row has changed
-  * @param vocab          vocabulary of system column names and values
+  * See [[dev.kamu.core.manifests.MergeStrategyKind.Snapshot]] for details.
   */
 class SnapshotMergeStrategy(
   primaryKey: Vector[String],
   compareColumns: Vector[String] = Vector.empty,
+  systemClock: Clock,
+  eventTime: Timestamp,
+  eventTimeColumn: String = "event_time",
+  observationColumn: String = "observed",
+  obsvAdded: String = "I",
+  obsvChanged: String = "U",
+  obsvRemoved: String = "D",
   vocab: DatasetVocabulary = DatasetVocabulary()
-) extends MergeStrategy(vocab) {
+) extends MergeStrategy(systemClock, vocab) {
 
   override def merge(
     prevRaw: Option[DataFrame],
-    currRaw: DataFrame,
-    systemTime: Timestamp,
-    eventTime: Option[Timestamp]
+    currRaw: DataFrame
   ): DataFrame = {
-    val (prev, curr, addedColumns, removedColumns) =
-      prepare(prevRaw, currRaw, systemTime, eventTime)
+    val (prev, curr, addedColumns, removedColumns) = prepare(prevRaw, currRaw)
 
     ensureEventTimeDoesntGoBackwards(prev, curr)
 
     val dataColumns = curr.columns
       .filter(
-        c =>
-          c != vocab.systemTimeColumn && c != vocab.eventTimeColumn && c != vocab.observationColumn
+        c => c != vocab.systemTimeColumn && c != eventTimeColumn && c != observationColumn
       )
       .toVector
 
@@ -84,8 +59,14 @@ class SnapshotMergeStrategy(
         dataColumns.filter(!primaryKey.contains(_))
       }
 
-    val prevProj = TimeSeriesUtils
-      .asOf(prev, primaryKey, vocab.eventTimeColumn, None, vocab)
+    val prevProj = TimeSeriesUtils.asOf(
+      prev,
+      primaryKey,
+      None,
+      eventTimeColumn,
+      observationColumn,
+      obsvRemoved
+    )
 
     // We consider data changed when
     // either both columns exist and have different values
@@ -107,24 +88,24 @@ class SnapshotMergeStrategy(
       .map(
         c =>
           when(
-            col(vocab.observationColumn) === vocab.obsvRemoved,
+            col(observationColumn) === obsvRemoved,
             prevProj(c)
           ).otherwise(curr(c))
             .as(c)
       )
 
     val resultColumns = (
-      lit(systemTime).as(vocab.systemTimeColumn)
+      lit(systemClock.timestamp()).as(vocab.systemTimeColumn)
         :: when(
-          col(vocab.observationColumn) === vocab.obsvRemoved,
-          lit(eventTime.getOrElse(systemTime))
-        ).otherwise(curr(vocab.eventTimeColumn)).as(vocab.eventTimeColumn)
-        :: col(vocab.observationColumn)
+          col(observationColumn) === obsvRemoved,
+          lit(eventTime)
+        ).otherwise(curr(eventTimeColumn)).as(eventTimeColumn)
+        :: col(observationColumn)
         :: resultDataColumns.toList
     )
 
     val result = curr
-      .drop(vocab.systemTimeColumn, vocab.observationColumn)
+      .drop(vocab.systemTimeColumn, observationColumn)
       .join(
         prevProj,
         primaryKey.map(c => prevProj(c) <=> curr(c)).reduce(_ && _),
@@ -136,15 +117,15 @@ class SnapshotMergeStrategy(
           || changedPredicate
       )
       .withColumn(
-        vocab.observationColumn,
+        observationColumn,
         when(
           primaryKey.map(prevProj(_).isNull).reduce(_ && _),
-          vocab.obsvAdded
+          obsvAdded
         ).when(
             primaryKey.map(curr(_).isNull).reduce(_ && _),
-            vocab.obsvRemoved
+            obsvRemoved
           )
-          .otherwise(vocab.obsvChanged)
+          .otherwise(obsvChanged)
       )
       .dropDuplicates(primaryKey)
       .select(resultColumns: _*)
@@ -157,9 +138,9 @@ class SnapshotMergeStrategy(
     curr: DataFrame
   ): Unit = {
     val lastSeenMaxEventTime =
-      prev.agg(max(vocab.eventTimeColumn)).head().getTimestamp(0)
+      prev.agg(max(eventTimeColumn)).head().getTimestamp(0)
     val newMinEventTime =
-      curr.agg(min(vocab.eventTimeColumn)).head().getTimestamp(0)
+      curr.agg(min(eventTimeColumn)).head().getTimestamp(0)
 
     if (lastSeenMaxEventTime != null && newMinEventTime != null && lastSeenMaxEventTime
           .compareTo(newMinEventTime) >= 0) {
@@ -171,30 +152,26 @@ class SnapshotMergeStrategy(
 
   override protected def prepare(
     prevRaw: Option[DataFrame],
-    currRaw: DataFrame,
-    systemTime: Timestamp,
-    eventTime: Option[Timestamp]
+    currRaw: DataFrame
   ): (DataFrame, DataFrame, Set[String], Set[String]) = {
-    if (currRaw.hasColumn(vocab.observationColumn))
-      throw new Exception(
-        s"Data already contains column: ${vocab.observationColumn}"
-      )
+    if (currRaw.hasColumn(eventTimeColumn))
+      throw new Exception(s"Data already contains column: $eventTimeColumn")
+    if (currRaw.hasColumn(observationColumn))
+      throw new Exception(s"Data already contains column: $observationColumn")
 
-    val (prev, curr, addedColumns, removedColumns) =
-      super.prepare(prevRaw, currRaw, systemTime, eventTime)
+    val currWithMergeCols = currRaw
+      .withColumn(eventTimeColumn, lit(eventTime))
+      .withColumn(observationColumn, lit(obsvAdded))
 
-    (
-      prev.maybeTransform(
-        !prev.hasColumn(vocab.observationColumn),
-        _.withColumn(vocab.observationColumn, lit(vocab.obsvAdded))
-      ),
-      curr
-        .maybeTransform(
-          !curr.hasColumn(vocab.observationColumn),
-          _.withColumn(vocab.observationColumn, lit(vocab.obsvAdded))
-        ),
-      addedColumns,
-      removedColumns - vocab.observationColumn
-    )
+    super.prepare(prevRaw, currWithMergeCols)
+  }
+
+  override protected def orderColumns(dataFrame: DataFrame): DataFrame = {
+    val columns = Seq(
+      vocab.systemTimeColumn,
+      eventTimeColumn,
+      observationColumn
+    ).filter(dataFrame.getColumn(_).isDefined)
+    dataFrame.columnToFront(columns: _*)
   }
 }

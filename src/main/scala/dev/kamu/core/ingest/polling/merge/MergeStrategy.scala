@@ -14,24 +14,35 @@ import dev.kamu.core.ingest.polling.utils.TimeSeriesUtils
 import dev.kamu.core.ingest.polling.utils.DFUtils._
 import dev.kamu.core.manifests
 import dev.kamu.core.manifests.DatasetVocabulary
+import dev.kamu.core.utils.Clock
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.lit
 
 object MergeStrategy {
   def apply(
     kind: manifests.MergeStrategyKind,
+    systemClock: Clock,
+    eventTime: Option[Timestamp],
     vocab: DatasetVocabulary
   ): MergeStrategy = {
     kind match {
       case _: manifests.MergeStrategyKind.Append =>
-        new AppendMergeStrategy(vocab)
-      case c: manifests.MergeStrategyKind.Ledger =>
-        new LedgerMergeStrategy(c.primaryKey, vocab)
-      case c: manifests.MergeStrategyKind.Snapshot =>
+        new AppendMergeStrategy(systemClock, vocab)
+      case l: manifests.MergeStrategyKind.Ledger =>
+        new LedgerMergeStrategy(l.primaryKey, systemClock, vocab)
+      case ss: manifests.MergeStrategyKind.Snapshot =>
+        val s = ss.withDefaults()
         new SnapshotMergeStrategy(
-          primaryKey = c.primaryKey,
-          compareColumns = c.compareColumns,
-          vocab
+          primaryKey = s.primaryKey,
+          compareColumns = s.compareColumns,
+          eventTimeColumn = s.eventTimeColumn.get,
+          eventTime = eventTime.getOrElse(systemClock.timestamp()),
+          observationColumn = s.observationColumn.get,
+          obsvAdded = s.obsvAdded.get,
+          obsvChanged = s.obsvChanged.get,
+          obsvRemoved = s.obsvRemoved.get,
+          systemClock = systemClock,
+          vocab = vocab
         )
       case _ =>
         throw new NotImplementedError(s"Unsupported strategy: $kind")
@@ -39,54 +50,45 @@ object MergeStrategy {
   }
 }
 
-abstract class MergeStrategy(vocab: DatasetVocabulary) {
+abstract class MergeStrategy(
+  systemClock: Clock,
+  vocab: DatasetVocabulary
+) {
 
   /** Performs merge-in of the data.
     *
     * @param prev data that is already stored in the system (if any)
     * @param curr data to be added
-    * @param systemTime system wall clock to be added to all records
-    * @param eventTime event time to add to new rows if not already contained in the data
     */
   def merge(
     prev: Option[DataFrame],
-    curr: DataFrame,
-    systemTime: Timestamp,
-    eventTime: Option[Timestamp]
+    curr: DataFrame
   ): DataFrame
 
+  /** Adds system columns and reconciles schema differences between previously
+    * seen and the new data
+    */
   protected def prepare(
     prevRaw: Option[DataFrame],
-    currRaw: DataFrame,
-    systemTime: Timestamp,
-    eventTime: Option[Timestamp]
+    currRaw: DataFrame
   ): (DataFrame, DataFrame, Set[String], Set[String]) = {
     if (currRaw.getColumn(vocab.systemTimeColumn).isDefined)
       throw new Exception(
         s"Data already contains column: ${vocab.systemTimeColumn}"
       )
 
-    if (eventTime.isEmpty && !currRaw.hasColumn(vocab.eventTimeColumn))
-      throw new Exception(
-        s"Event time column is neither specified in bulk nor exists in raw data: ${vocab.eventTimeColumn}"
-      )
+    val currWithSysCols = currRaw
+      .withColumn(vocab.systemTimeColumn, lit(systemClock.timestamp()))
 
-    val currWithTimes = currRaw
-      .withColumn(vocab.systemTimeColumn, lit(systemTime))
-      .maybeTransform(
-        !currRaw.hasColumn(vocab.eventTimeColumn),
-        _.withColumn(vocab.eventTimeColumn, lit(eventTime.get))
-      )
-
-    val prevOrEmpty = prevRaw.getOrElse(TimeSeriesUtils.empty(currWithTimes))
+    val prevOrEmpty = prevRaw.getOrElse(TimeSeriesUtils.empty(currWithSysCols))
 
     val combinedColumns =
-      (prevOrEmpty.columns ++ currWithTimes.columns).distinct
+      (prevOrEmpty.columns ++ currWithSysCols.columns).distinct
 
     val addedColumns =
       combinedColumns.filter(!prevOrEmpty.hasColumn(_)).toSet
     val removedColumns =
-      combinedColumns.filter(!currWithTimes.hasColumn(_)).toSet
+      combinedColumns.filter(!currWithSysCols.hasColumn(_)).toSet
 
     val prev = prevOrEmpty.select(
       combinedColumns.map(
@@ -98,10 +100,10 @@ abstract class MergeStrategy(vocab: DatasetVocabulary) {
       ): _*
     )
 
-    val curr = currWithTimes.select(
+    val curr = currWithSysCols.select(
       combinedColumns.map(
         c =>
-          currWithTimes
+          currWithSysCols
             .getColumn(c)
             .getOrElse(lit(null))
             .as(c)
@@ -118,9 +120,7 @@ abstract class MergeStrategy(vocab: DatasetVocabulary) {
 
   protected def orderColumns(dataFrame: DataFrame): DataFrame = {
     val columns = Seq(
-      vocab.systemTimeColumn,
-      vocab.eventTimeColumn,
-      vocab.observationColumn
+      vocab.systemTimeColumn
     ).filter(dataFrame.getColumn(_).isDefined)
     dataFrame.columnToFront(columns: _*)
   }

@@ -48,7 +48,7 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
           |source:
           |  kind: root
           |  fetch:
-          |    kind: fetchFilesGlob
+          |    kind: filesGlob
           |    path: ${tempDir.resolve("src").resolve("balances-*.csv")}
           |    eventTime:
           |      kind: fromPath
