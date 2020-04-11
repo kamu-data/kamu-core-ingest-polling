@@ -33,7 +33,8 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
 
       val dataset = yaml.load[DatasetSnapshot](s"""
         |id: dev.kamu.test
-        |rootPollingSource:
+        |source:
+        |  kind: root
         |  fetch:
         |    kind: fetchUrl
         |    url: $inputPath
@@ -101,7 +102,8 @@ class IngestSnapshotTest extends FunSuite with IngestSuite {
 
       val dataset = yaml.load[DatasetSnapshot](s"""
         |id: dev.kamu.test
-        |rootPollingSource:
+        |source:
+        |  kind: root
         |  fetch:
         |    kind: fetchUrl
         |    url: $inputPath

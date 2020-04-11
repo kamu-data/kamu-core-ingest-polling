@@ -85,10 +85,14 @@ class Ingest(
     for (task <- config.tasks) {
       val metaChain =
         new MetadataChainFS(fileSystem, task.datasetLayout.metadataDir)
-      val blocks = metaChain.getBlocks()
 
       val summary = metaChain.getSummary()
-      val source = blocks.flatMap(_.rootPollingSource).last
+      val source = metaChain
+        .getBlocks()
+        .reverse
+        .flatMap(_.source)
+        .head
+        .asInstanceOf[SourceKind.Root]
 
       val cachingBehavior = sourceFactory.getCachingBehavior(source.fetch)
 
@@ -179,7 +183,7 @@ class Ingest(
   }
 
   def maybeDownload(
-    source: RootPollingSource,
+    source: SourceKind.Root,
     externalSource: CacheableSource,
     cachingBehavior: CachingBehavior,
     downloadCheckpointPath: Path,
@@ -215,7 +219,7 @@ class Ingest(
 
   // TODO: Avoid copying data if prepare step is a no-op
   def maybePrepare(
-    source: RootPollingSource,
+    source: SourceKind.Root,
     downloadDataPath: Path,
     downloadCheckpoint: DownloadCheckpoint,
     prepCheckpointPath: Path,
@@ -267,7 +271,7 @@ class Ingest(
   }
 
   def maybeIngest(
-    source: RootPollingSource,
+    source: SourceKind.Root,
     prepCheckpoint: PrepCheckpoint,
     prepDataPath: Path,
     ingestCheckpointPath: Path,
@@ -348,7 +352,7 @@ class Ingest(
 
   def ingest(
     spark: SparkSession,
-    source: RootPollingSource,
+    source: SourceKind.Root,
     eventTime: Option[Instant],
     filePath: Path,
     outPath: Path,
@@ -393,7 +397,7 @@ class Ingest(
 
   def readGeneric(
     spark: SparkSession,
-    source: RootPollingSource,
+    source: SourceKind.Root,
     filePath: Path,
     vocab: DatasetVocabulary
   ): DataFrame = {
@@ -414,7 +418,7 @@ class Ingest(
   // TODO: This is inefficient
   def readShapefile(
     spark: SparkSession,
-    source: RootPollingSource,
+    source: SourceKind.Root,
     filePath: Path,
     vocab: DatasetVocabulary
   ): DataFrame = {
@@ -451,7 +455,7 @@ class Ingest(
   // TODO: This is very inefficient, should extend GeoSpark to support this
   def readGeoJSON(
     spark: SparkSession,
-    source: RootPollingSource,
+    source: SourceKind.Root,
     filePath: Path,
     vocab: DatasetVocabulary
   ): DataFrame = {
@@ -488,7 +492,7 @@ class Ingest(
     }
   }
 
-  def normalizeSchema(source: RootPollingSource)(df: DataFrame): DataFrame = {
+  def normalizeSchema(source: SourceKind.Root)(df: DataFrame): DataFrame = {
     if (source.read.schema.nonEmpty)
       return df
 
@@ -504,7 +508,7 @@ class Ingest(
     result
   }
 
-  def preprocess(source: RootPollingSource)(df: DataFrame): DataFrame = {
+  def preprocess(source: SourceKind.Root)(df: DataFrame): DataFrame = {
     if (source.preprocess.isEmpty)
       return df
 
@@ -533,7 +537,7 @@ class Ingest(
   }
 
   def mergeWithExisting(
-    source: RootPollingSource,
+    source: SourceKind.Root,
     eventTime: Option[Instant],
     outPath: Path,
     vocab: DatasetVocabulary

@@ -45,7 +45,8 @@ class IngestMultiSourceTest extends FunSuite with IngestSuite {
 
       val dataset = yaml.load[DatasetSnapshot](s"""
           |id: dev.kamu.test
-          |rootPollingSource:
+          |source:
+          |  kind: root
           |  fetch:
           |    kind: fetchFilesGlob
           |    path: ${tempDir.resolve("src").resolve("balances-*.csv")}
