@@ -12,352 +12,54 @@ import java.sql.Timestamp
 import java.time.Instant
 import java.util.zip.ZipInputStream
 
-import dev.kamu.core.ingest.polling.convert.{
-  ConversionStepFactory,
-  IngestCheckpoint
-}
 import dev.kamu.core.ingest.polling.merge.MergeStrategy
-import dev.kamu.core.ingest.polling.poll.{
-  CacheableSource,
-  CachingBehavior,
-  DownloadCheckpoint,
-  SourceFactory
-}
-import dev.kamu.core.ingest.polling.prep.{PrepCheckpoint, PrepStepFactory}
 import dev.kamu.core.ingest.polling.utils.DFUtils._
-import dev.kamu.core.ingest.polling.utils.{
-  CheckpointingExecutor,
-  ExecutionResult,
-  ZipFiles
-}
-import dev.kamu.core.manifests.infra.MetadataChainFS
+import dev.kamu.core.ingest.polling.utils.ZipFiles
 import dev.kamu.core.manifests._
 import dev.kamu.core.manifests.parsing.pureconfig.yaml
-import dev.kamu.core.utils.{DataFrameDigestSHA1, ManualClock}
 import yaml.defaults._
 import pureconfig.generic.auto._
+import dev.kamu.core.utils.{DataFrameDigestSHA1, ManualClock}
 import dev.kamu.core.utils.fs._
-import org.apache.commons.compress.compressors.bzip2.{
-  BZip2CompressorInputStream,
-  BZip2CompressorOutputStream
-}
-import org.apache.commons.io.IOUtils
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.log4j.LogManager
 import org.apache.spark.sql._
 import org.datasyslab.geospark.formatMapper.GeoJsonReader
 import org.datasyslab.geospark.formatMapper.shapefileParser.ShapefileReader
-import org.datasyslab.geosparksql.UDF.UdfRegistrator
 import org.datasyslab.geosparksql.utils.Adapter
 import spire.math.Interval
 
 class Ingest(
-  config: AppConf,
-  hadoopConf: org.apache.hadoop.conf.Configuration,
-  systemClock: ManualClock,
-  getSparkSession: () => SparkSession
+  fileSystem: FileSystem,
+  systemClock: ManualClock
 ) {
   private val logger = LogManager.getLogger(getClass.getName)
 
-  private val fileSystem = FileSystem.get(hadoopConf)
-
-  // TODO: Disabling CRCs causes internal exception in Spark
-  //fileSystem.setWriteChecksum(false)
-  //fileSystem.setVerifyChecksum(false)
-
-  private val sourceFactory = new SourceFactory(fileSystem, systemClock)
-  private val prepStepFactory = new PrepStepFactory(fileSystem)
-  private val conversionStepFactory = new ConversionStepFactory()
-  private val downloadExecutor =
-    new CheckpointingExecutor[DownloadCheckpoint](fileSystem)
-  private val prepExecutor =
-    new CheckpointingExecutor[PrepCheckpoint](fileSystem)
-  private val ingestExecutor =
-    new CheckpointingExecutor[IngestCheckpoint](fileSystem)
-  private lazy val sparkSession = getSparkSession()
-
-  def pollAndIngest(): Unit = {
-    logger.info(s"Starting ingest")
-    logger.info(s"Running with config: $config")
-
-    systemClock.advance()
-
-    for (task <- config.tasks) {
-      val metaChain =
-        new MetadataChainFS(fileSystem, task.datasetLayout.metadataDir)
-
-      val summary = metaChain.getSummary()
-      val source = metaChain
-        .getBlocks()
-        .reverse
-        .flatMap(_.source)
-        .head
-        .asInstanceOf[SourceKind.Root]
-
-      val cachingBehavior = sourceFactory.getCachingBehavior(source.fetch)
-
-      for (externalSource <- sourceFactory.getSource(source.fetch)) {
-        logger.info(
-          s"Processing data source: ${task.datasetToIngest}:${externalSource.sourceID}"
-            + s" (${systemClock.instant()})"
-        )
-
-        val downloadCheckpointPath = task.datasetLayout.checkpointsDir
-          .resolve(externalSource.sourceID)
-          .resolve(AppConf.downloadCheckpointFileName)
-        val downloadDataPath = task.datasetLayout.cacheDir
-          .resolve(externalSource.sourceID)
-          .resolve(AppConf.downloadDataFileName)
-        val prepCheckpointPath = task.datasetLayout.checkpointsDir
-          .resolve(externalSource.sourceID)
-          .resolve(AppConf.prepCheckpointFileName)
-        val prepDataPath = task.datasetLayout.cacheDir
-          .resolve(externalSource.sourceID)
-          .resolve(AppConf.prepDataFileName)
-        val ingestCheckpointPath = task.datasetLayout.checkpointsDir
-          .resolve(externalSource.sourceID)
-          .resolve(AppConf.ingestCheckpointFileName)
-        val ingestDataPath = task.datasetLayout.dataDir
-
-        Seq(
-          downloadCheckpointPath,
-          downloadDataPath,
-          prepCheckpointPath,
-          prepDataPath,
-          ingestCheckpointPath,
-          ingestDataPath
-        ).map(_.getParent)
-          .filter(!fileSystem.exists(_))
-          .foreach(fileSystem.mkdirs)
-
-        logger.info(s"Stage: polling")
-        val downloadResult = maybeDownload(
-          source,
-          externalSource,
-          cachingBehavior,
-          downloadCheckpointPath,
-          downloadDataPath
-        )
-
-        logger.info(s"Stage: prep")
-        val prepResult = maybePrepare(
-          source,
-          downloadDataPath,
-          downloadResult.checkpoint,
-          prepCheckpointPath,
-          prepDataPath
-        )
-
-        logger.info(s"Stage: ingest")
-        val ingestResult = maybeIngest(
-          source,
-          prepResult.checkpoint,
-          prepDataPath,
-          ingestCheckpointPath,
-          ingestDataPath,
-          summary.vocabulary
-            .getOrElse(DatasetVocabularyOverrides())
-            .asDatasetVocabulary()
-        )
-
-        // TODO: Atomicity?
-        maybeCommitMetadata(
-          metaChain,
-          ingestResult,
-          ingestDataPath
-        )
-
-        if (ingestResult.wasUpToDate) {
-          logger.info(
-            s"Data is up to date: ${task.datasetToIngest}:${externalSource.sourceID}"
-          )
-        } else {
-          logger.info(
-            s"Data was updated: ${task.datasetToIngest}:${externalSource.sourceID}"
-          )
-        }
-      }
-    }
-
-    logger.info(s"Finished ingest run")
-  }
-
-  def maybeDownload(
-    source: SourceKind.Root,
-    externalSource: CacheableSource,
-    cachingBehavior: CachingBehavior,
-    downloadCheckpointPath: Path,
-    downloadDataPath: Path
-  ): ExecutionResult[DownloadCheckpoint] = {
-    downloadExecutor.execute(
-      checkpointPath = downloadCheckpointPath,
-      execute = storedCheckpoint => {
-        val downloadResult = externalSource.maybeDownload(
-          storedCheckpoint,
-          cachingBehavior,
-          body => {
-            val outputStream = fileSystem.create(downloadDataPath, true)
-            val compressedStream =
-              new BZip2CompressorOutputStream(outputStream)
-            try {
-              IOUtils.copy(body, compressedStream)
-            } finally {
-              compressedStream.close()
-            }
-          }
-        )
-
-        if (!downloadResult.checkpoint.isCacheable)
-          logger.warn(
-            "Data source is uncacheable - data will not be updated in future."
-          )
-
-        downloadResult
-      }
-    )
-  }
-
-  // TODO: Avoid copying data if prepare step is a no-op
-  def maybePrepare(
-    source: SourceKind.Root,
-    downloadDataPath: Path,
-    downloadCheckpoint: DownloadCheckpoint,
-    prepCheckpointPath: Path,
-    prepDataPath: Path
-  ): ExecutionResult[PrepCheckpoint] = {
-    prepExecutor.execute(
-      checkpointPath = prepCheckpointPath,
-      execute = storedCheckpoint => {
-        if (storedCheckpoint.isDefined
-            && storedCheckpoint.get.downloadTimestamp == downloadCheckpoint.lastDownloaded) {
-          ExecutionResult(
-            wasUpToDate = true,
-            checkpoint = storedCheckpoint.get
-          )
-        } else {
-          val prepStep = prepStepFactory.getComposedSteps(source.prepare)
-          val convertStep = conversionStepFactory.getComposedSteps(source.read)
-
-          val inputStream = fileSystem.open(downloadDataPath)
-          val decompressedInStream = new BZip2CompressorInputStream(inputStream)
-
-          val outputStream = fileSystem.create(prepDataPath, true)
-          val compressedOutStream =
-            new BZip2CompressorOutputStream(outputStream)
-
-          try {
-            val preparedInStream = prepStep.prepare(decompressedInStream)
-            val convertedInStream = convertStep.convert(preparedInStream)
-
-            IOUtils.copy(convertedInStream, compressedOutStream)
-
-            prepStep.join()
-          } finally {
-            decompressedInStream.close()
-            compressedOutStream.close()
-          }
-
-          ExecutionResult(
-            wasUpToDate = false,
-            checkpoint = PrepCheckpoint(
-              downloadTimestamp = downloadCheckpoint.lastDownloaded,
-              eventTime = downloadCheckpoint.eventTime,
-              lastPrepared = systemClock.instant()
-            )
-          )
-        }
-      }
-    )
-  }
-
-  def maybeIngest(
-    source: SourceKind.Root,
-    prepCheckpoint: PrepCheckpoint,
-    prepDataPath: Path,
-    ingestCheckpointPath: Path,
-    ingestDataPath: Path,
-    vocab: DatasetVocabulary
-  ): ExecutionResult[IngestCheckpoint] = {
-    ingestExecutor.execute(
-      checkpointPath = ingestCheckpointPath,
-      execute = storedCheckpoint => {
-        if (storedCheckpoint.isDefined
-            && storedCheckpoint.get.prepTimestamp == prepCheckpoint.lastPrepared) {
-          ExecutionResult(
-            wasUpToDate = true,
-            checkpoint = storedCheckpoint.get
-          )
-        } else {
-          val (dataHash, numRecords) = ingest(
-            getSparkSubSession(sparkSession),
-            source,
-            prepCheckpoint.eventTime,
-            prepDataPath,
-            ingestDataPath,
-            vocab
-          )
-
-          ExecutionResult(
-            wasUpToDate = false,
-            checkpoint = IngestCheckpoint(
-              prepTimestamp = prepCheckpoint.lastPrepared,
-              lastIngested = systemClock.instant(),
-              outputDataHash = dataHash,
-              outputNumRecords = numRecords
-            )
-          )
-        }
-      }
-    )
-  }
-
-  def maybeCommitMetadata(
-    metaChain: MetadataChainFS,
-    ingestResult: ExecutionResult[IngestCheckpoint],
-    dataDir: Path
-  ): Unit = {
-    // TODO: Should we commit anyway to advance dataset clock?
-    if (ingestResult.wasUpToDate)
-      return
-
-    // TODO: Avoid loading blocks again
-    val block = metaChain.append(
-      MetadataBlock(
-        prevBlockHash = metaChain.getBlocks().last.blockHash,
-        systemTime = systemClock.instant(),
-        outputSlice = Some(
-          DataSlice(
-            hash = ingestResult.checkpoint.outputDataHash,
-            interval = Interval.point(systemClock.instant()),
-            numRecords = ingestResult.checkpoint.outputNumRecords
-          )
-        )
-      )
+  def ingest(spark: SparkSession, task: IngestTask): Unit = {
+    val block = ingest(
+      spark,
+      task.source,
+      task.eventTime,
+      task.dataToIngest,
+      task.datasetLayout.dataDir,
+      task.datasetVocab
     )
 
-    // TODO: Atomicity?
-    metaChain.updateSummary(
-      s =>
-        s.copy(
-          lastPulled = Some(systemClock.instant()),
-          numRecords = s.numRecords + block.outputSlice.get.numRecords,
-          dataSize = fileSystem
-            .getContentSummary(dataDir)
-            .getSpaceConsumed
-        )
-    )
-
-    logger.info(s"Committing new metadata block: ${block.blockHash}")
+    val ouptutStream =
+      fileSystem.create(task.metadataOutputDir.resolve("block.yaml"))
+    yaml.save(Manifest(block), ouptutStream)
+    ouptutStream.close()
   }
 
-  def ingest(
+  private def ingest(
     spark: SparkSession,
     source: SourceKind.Root,
     eventTime: Option[Instant],
     filePath: Path,
     outPath: Path,
     vocab: DatasetVocabulary
-  ): (String, Long) = {
+  ): MetadataBlock = {
     logger.info(
       s"Ingesting the data: in=$filePath, out=$outPath, format=${source.read}"
     )
@@ -392,10 +94,20 @@ class Ingest(
 
     result.unpersist()
 
-    (hash, numRecords)
+    MetadataBlock(
+      prevBlockHash = "",
+      systemTime = systemClock.instant(),
+      outputSlice = Some(
+        DataSlice(
+          hash = hash,
+          numRecords = numRecords,
+          interval = Interval.point(systemClock.instant())
+        )
+      )
+    )
   }
 
-  def readGeneric(
+  private def readGeneric(
     spark: SparkSession,
     source: SourceKind.Root,
     filePath: Path,
@@ -416,7 +128,7 @@ class Ingest(
   }
 
   // TODO: This is inefficient
-  def readShapefile(
+  private def readShapefile(
     spark: SparkSession,
     source: SourceKind.Root,
     filePath: Path,
@@ -453,7 +165,7 @@ class Ingest(
   }
 
   // TODO: This is very inefficient, should extend GeoSpark to support this
-  def readGeoJSON(
+  private def readGeoJSON(
     spark: SparkSession,
     source: SourceKind.Root,
     filePath: Path,
@@ -474,7 +186,9 @@ class Ingest(
       )
   }
 
-  def checkForErrors(vocab: DatasetVocabulary)(df: DataFrame): DataFrame = {
+  private def checkForErrors(
+    vocab: DatasetVocabulary
+  )(df: DataFrame): DataFrame = {
     df.getColumn(vocab.corruptRecordColumn) match {
       case None =>
         df
@@ -492,7 +206,9 @@ class Ingest(
     }
   }
 
-  def normalizeSchema(source: SourceKind.Root)(df: DataFrame): DataFrame = {
+  private def normalizeSchema(
+    source: SourceKind.Root
+  )(df: DataFrame): DataFrame = {
     if (source.read.schema.nonEmpty)
       return df
 
@@ -508,7 +224,7 @@ class Ingest(
     result
   }
 
-  def preprocess(source: SourceKind.Root)(df: DataFrame): DataFrame = {
+  private def preprocess(source: SourceKind.Root)(df: DataFrame): DataFrame = {
     if (source.preprocess.isEmpty)
       return df
 
@@ -536,7 +252,7 @@ class Ingest(
     )
   }
 
-  def mergeWithExisting(
+  private def mergeWithExisting(
     source: SourceKind.Root,
     eventTime: Option[Instant],
     outPath: Path,
@@ -562,13 +278,7 @@ class Ingest(
     mergeStrategy.merge(prev, curr)
   }
 
-  def getSparkSubSession(sparkSession: SparkSession): SparkSession = {
-    val subSession = sparkSession.newSession()
-    UdfRegistrator.registerAll(subSession)
-    subSession
-  }
-
-  def computeHash(df: DataFrame): String = {
+  private def computeHash(df: DataFrame): String = {
     // TODO: drop system time column first?
     new DataFrameDigestSHA1().digest(df)
   }

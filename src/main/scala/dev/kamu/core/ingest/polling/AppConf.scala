@@ -9,12 +9,19 @@
 package dev.kamu.core.ingest.polling
 
 import java.io.InputStream
+import java.time.Instant
 
-import dev.kamu.core.manifests.{DatasetID, DatasetLayout, Manifest, Resource}
+import dev.kamu.core.manifests._
+import org.apache.hadoop.fs.Path
 
 case class IngestTask(
-  datasetToIngest: DatasetID,
-  datasetLayout: DatasetLayout
+  datasetID: DatasetID,
+  source: SourceKind.Root,
+  datasetLayout: DatasetLayout,
+  datasetVocab: DatasetVocabulary,
+  dataToIngest: Path,
+  eventTime: Option[Instant],
+  metadataOutputDir: Path
 ) extends Resource
 
 case class AppConf(
@@ -27,11 +34,6 @@ object AppConf {
   import pureconfig.generic.auto._
 
   val configFileName = "pollConfig.yaml"
-  val downloadCheckpointFileName = "download.checkpoint.yaml"
-  val downloadDataFileName = "download.bz2"
-  val prepCheckpointFileName = "prepare.checkpoint.yaml"
-  val prepDataFileName = "prepare.bz2"
-  val ingestCheckpointFileName = "ingest.checkpoint.yaml"
 
   def load(): AppConf = {
     yaml

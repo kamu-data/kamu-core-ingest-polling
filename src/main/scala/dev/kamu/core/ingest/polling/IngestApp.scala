@@ -9,6 +9,7 @@
 package dev.kamu.core.ingest.polling
 
 import dev.kamu.core.utils.ManualClock
+import org.apache.hadoop.fs.FileSystem
 import org.apache.log4j.LogManager
 import org.apache.spark.SparkConf
 import org.apache.spark.deploy.SparkHadoopUtil
@@ -21,38 +22,46 @@ object IngestApp {
   def main(args: Array[String]) {
     val logger = LogManager.getLogger(getClass.getName)
     val config = AppConf.load()
+    val systemClock = new ManualClock()
+    val fileSystem = FileSystem.get(hadoopConf)
+
+    // TODO: Disabling CRCs causes internal exception in Spark
+    //fileSystem.setWriteChecksum(false)
+    //fileSystem.setVerifyChecksum(false)
+
     if (config.tasks.isEmpty) {
       logger.warn("No tasks specified")
-    } else {
-      val ingest = new Ingest(
-        config,
-        hadoopConf,
-        new ManualClock(),
-        sparkSession
-      )
+      return
+    }
 
-      ingest.pollAndIngest()
+    val ingest = new Ingest(fileSystem, systemClock)
+
+    for (task <- config.tasks) {
+      ingest.ingest(getSparkSubSession(sparkSession), task)
     }
   }
 
-  private def sparkConf(): SparkConf = {
+  def sparkConf: SparkConf = {
     new SparkConf()
-      .setAppName("ingest.polling")
+      .setAppName("transform.streaming")
       .set("spark.sql.session.timeZone", "UTC")
       .set("spark.serializer", classOf[KryoSerializer].getName)
       .set("spark.kryo.registrator", classOf[GeoSparkKryoRegistrator].getName)
   }
 
-  private def hadoopConf(): org.apache.hadoop.conf.Configuration = {
+  def hadoopConf: org.apache.hadoop.conf.Configuration = {
     SparkHadoopUtil.get.newConfiguration(sparkConf)
   }
 
-  private def sparkSession(): SparkSession = {
-    val session = SparkSession.builder
+  def sparkSession: SparkSession = {
+    SparkSession.builder
       .config(sparkConf)
       .getOrCreate()
+  }
 
-    GeoSparkSQLRegistrator.registerAll(session)
-    session
+  def getSparkSubSession(sparkSession: SparkSession): SparkSession = {
+    val subSession = sparkSession.newSession()
+    GeoSparkSQLRegistrator.registerAll(subSession)
+    subSession
   }
 }
