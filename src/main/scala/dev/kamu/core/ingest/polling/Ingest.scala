@@ -19,7 +19,7 @@ import dev.kamu.core.manifests._
 import dev.kamu.core.manifests.parsing.pureconfig.yaml
 import yaml.defaults._
 import pureconfig.generic.auto._
-import dev.kamu.core.utils.{DataFrameDigestSHA1, ManualClock}
+import dev.kamu.core.utils.{DataFrameDigestSHA1, Clock}
 import dev.kamu.core.utils.fs._
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -32,7 +32,7 @@ import spire.math.Interval
 
 class Ingest(
   fileSystem: FileSystem,
-  systemClock: ManualClock
+  systemClock: Clock
 ) {
   private val logger = LogManager.getLogger(getClass.getName)
 

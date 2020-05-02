@@ -37,6 +37,7 @@ object IngestApp {
     val ingest = new Ingest(fileSystem, systemClock)
 
     for (task <- config.tasks) {
+      systemClock.advance()
       ingest.ingest(getSparkSubSession(sparkSession), task)
     }
   }
