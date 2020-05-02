@@ -19,7 +19,7 @@ import dev.kamu.core.manifests._
 import dev.kamu.core.manifests.parsing.pureconfig.yaml
 import yaml.defaults._
 import pureconfig.generic.auto._
-import dev.kamu.core.utils.{DataFrameDigestSHA1, Clock}
+import dev.kamu.core.utils.{DataFrameDigestSHA256, Clock}
 import dev.kamu.core.utils.fs._
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -280,7 +280,7 @@ class Ingest(
 
   private def computeHash(df: DataFrame): String = {
     // TODO: drop system time column first?
-    new DataFrameDigestSHA1().digest(df)
+    new DataFrameDigestSHA256().digest(df)
   }
 
 }
